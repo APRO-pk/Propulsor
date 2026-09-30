@@ -1,0 +1,16 @@
+{
+  "name": "apro-propulsor-shell",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Propulsor Tauri desktop shell — run tauri dev/build from here (it finds ./src-tauri).",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "build:debug": "tauri build --debug",
+    "build:signed": "tauri build --config src-tauri/tauri.signing.json"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

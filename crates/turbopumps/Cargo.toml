@@ -1,0 +1,9 @@
+[package]
+name = "turbopumps"
+description = "Turbomachinery sizing: pumps, inducers, turbines, shaft/bearing/gear/seal mechanicals, and gas-generator + staged-combustion power cycles (turboRocket-inspired)"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde = { workspace = true }

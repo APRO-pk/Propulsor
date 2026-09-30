@@ -1,0 +1,10 @@
+[package]
+name = "injector"
+description = "Injector orifice/spray sizing and stability heuristics"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+engine-core = { path = "../engine-core" }
+serde = { workspace = true }

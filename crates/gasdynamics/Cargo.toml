@@ -1,0 +1,11 @@
+[package]
+name = "gasdynamics"
+description = "Quasi-1D nozzle flow and Rao/MoC bell contour generation (L2)"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+engine-core = { path = "../engine-core" }
+thermo = { path = "../thermo" }
+serde = { workspace = true }

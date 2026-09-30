@@ -1,0 +1,10 @@
+[package]
+name = "propellants"
+description = "Propellant pair + materials database (seeded, embeddable)"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+engine-core = { path = "../engine-core" }
+serde = { workspace = true }

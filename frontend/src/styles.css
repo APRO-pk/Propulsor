@@ -1,0 +1,608 @@
+/*
+ * Qt "Fusion" desktop theme — a native-application look for the Propulsor engine
+ * designer: light grey window chrome, a menu bar and toolbar, dockable side
+ * panels, group boxes, a tabbed central widget and a status bar.
+ */
+
+:root {
+  --qt-window: #efeff2;
+  --qt-panel: #f6f6f8;
+  --qt-base: #ffffff;
+  --qt-alt-base: #f4f5f7;
+  --qt-border: #b9bcc4;
+  --qt-border-strong: #9a9ea8;
+  --qt-shadow: rgba(0, 0, 0, 0.12);
+  --qt-text: #1f2329;
+  --qt-text-dim: #6b7280;
+  --qt-text-disabled: #a7abb3;
+  --qt-highlight: #3574e0;
+  --qt-highlight-soft: #d7e6ff;
+  --qt-highlight-border: #7aa7ec;
+  --qt-btn-top: #fdfdfe;
+  --qt-btn-bottom: #e6e7eb;
+  --qt-btn-top-hover: #ffffff;
+  --qt-btn-bottom-hover: #dfe8f7;
+  --qt-groupbox-title: #414a57;
+  --qt-ok: #2f8f46;
+  --qt-warn: #c47b12;
+  --qt-err: #c23b34;
+  --qt-mono: "Cascadia Code", "Consolas", "SF Mono", monospace;
+  --qt-ui: "Segoe UI", "Noto Sans", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--qt-ui);
+  font-size: 12.5px;
+  color: var(--qt-text);
+  background: var(--qt-window);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Window shell -------------------------------------------------------- */
+.qt-window {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ---- Menu bar ------------------------------------------------------------ */
+.qt-menubar {
+  display: flex;
+  align-items: stretch;
+  background: linear-gradient(#f7f7f9, #ececef);
+  border-bottom: 1px solid var(--qt-border);
+  padding: 0 4px;
+  user-select: none;
+}
+.qt-menu {
+  padding: 5px 10px;
+  font-size: 12.5px;
+  border-radius: 3px;
+  margin: 3px 1px;
+  cursor: default;
+}
+.qt-menu:hover {
+  background: var(--qt-highlight-soft);
+  outline: 1px solid var(--qt-highlight-border);
+}
+.qt-menubar .spacer {
+  flex: 1;
+}
+.qt-menubar .title {
+  align-self: center;
+  padding-right: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--qt-text-dim);
+}
+
+/* ---- Toolbar ------------------------------------------------------------- */
+.qt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(#f4f4f6, #e9e9ec);
+  border-bottom: 1px solid var(--qt-border);
+  padding: 5px 8px;
+}
+.qt-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 3px 5px;
+  background: var(--qt-border);
+}
+.qt-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  font-family: var(--qt-ui);
+  font-size: 12.5px;
+  color: var(--qt-text);
+  background: linear-gradient(var(--qt-btn-top), var(--qt-btn-bottom));
+  border: 1px solid var(--qt-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.qt-tool:hover {
+  background: linear-gradient(var(--qt-btn-top-hover), var(--qt-btn-bottom-hover));
+  border-color: var(--qt-highlight-border);
+}
+.qt-tool:active {
+  background: linear-gradient(#dfe2e7, #eceef1);
+}
+.qt-tool.on {
+  background: linear-gradient(#dce8fb, #cadcf6);
+  border-color: var(--qt-highlight-border);
+  color: #1b3f7a;
+}
+.qt-tool .ico {
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* ---- Main area with docks ------------------------------------------------ */
+.qt-main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.qt-dock {
+  display: flex;
+  flex-direction: column;
+  background: var(--qt-panel);
+  min-height: 0;
+}
+.qt-dock.left {
+  width: 268px;
+  border-right: 1px solid var(--qt-border);
+}
+.qt-dock.right {
+  width: 300px;
+  border-left: 1px solid var(--qt-border);
+}
+.qt-dock-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--qt-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 6px 10px;
+  background: linear-gradient(#eeeef1, #e4e4e8);
+  border-bottom: 1px solid var(--qt-border);
+}
+.qt-dock-body {
+  padding: 10px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.qt-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--qt-window);
+}
+
+/* ---- Group box ----------------------------------------------------------- */
+.qt-groupbox {
+  border: 1px solid var(--qt-border);
+  border-radius: 5px;
+  background: var(--qt-base);
+  margin: 0 0 12px;
+  padding: 10px 10px 8px;
+  position: relative;
+}
+.qt-groupbox > legend,
+.qt-groupbox > .legend {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--qt-groupbox-title);
+  padding: 0 5px;
+  margin-left: 4px;
+}
+
+/* ---- Form rows ----------------------------------------------------------- */
+.qt-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+}
+.qt-field > span {
+  color: var(--qt-text-dim);
+  font-size: 12px;
+}
+.qt-field > b,
+.qt-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+input[type="number"],
+input[type="text"],
+select {
+  font-family: var(--qt-ui);
+  font-size: 12.5px;
+  color: var(--qt-text);
+  background: var(--qt-base);
+  border: 1px solid var(--qt-border-strong);
+  border-radius: 3px;
+  padding: 3px 6px;
+  width: 108px;
+  text-align: right;
+}
+select {
+  text-align: left;
+}
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--qt-highlight);
+  box-shadow: 0 0 0 2px var(--qt-highlight-soft);
+}
+
+/* ---- Property table (QTreeWidget-like) ----------------------------------- */
+.qt-proptable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  border: 1px solid var(--qt-border);
+  background: var(--qt-base);
+}
+.qt-proptable th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--qt-text-dim);
+  background: linear-gradient(#f0f0f3, #e6e6ea);
+  border-bottom: 1px solid var(--qt-border);
+  padding: 4px 8px;
+}
+.qt-proptable td {
+  padding: 3px 8px;
+  border-bottom: 1px solid #ececf0;
+}
+.qt-proptable td.val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.qt-proptable tr:nth-child(even) td {
+  background: var(--qt-alt-base);
+}
+
+/* ---- Badges / status ----------------------------------------------------- */
+.qt-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 9px;
+  border: 1px solid var(--qt-border);
+  background: var(--qt-base);
+  color: var(--qt-text-dim);
+}
+.qt-badge.solved {
+  color: var(--qt-ok);
+  border-color: #a9d6b4;
+  background: #eef8f0;
+}
+.qt-badge.stale {
+  color: var(--qt-warn);
+  border-color: #e2c78a;
+  background: #fdf6e8;
+}
+.qt-badge.failed {
+  color: var(--qt-err);
+  border-color: #e6b0ac;
+  background: #fceceb;
+}
+
+/* ---- Tab widget ---------------------------------------------------------- */
+.qt-tabbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 6px 8px 0;
+  background: linear-gradient(#e9e9ec, #e2e2e6);
+  border-bottom: 1px solid var(--qt-border);
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.qt-tab {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 6px 13px;
+  font-size: 12.5px;
+  color: var(--qt-text-dim);
+  background: linear-gradient(#eaeaed, #e0e0e4);
+  border: 1px solid var(--qt-border);
+  border-bottom: none;
+  border-radius: 5px 5px 0 0;
+  cursor: pointer;
+  position: relative;
+  top: 1px;
+}
+.qt-tab:hover {
+  background: linear-gradient(#f2f2f5, #e8e8ec);
+}
+.qt-tab.active {
+  color: var(--qt-text);
+  font-weight: 600;
+  background: var(--qt-window);
+  border-bottom: 1px solid var(--qt-window);
+}
+.qt-tabpage {
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.qt-tabpage.fill {
+  padding: 0;
+}
+
+/* ---- 3D viewer ----------------------------------------------------------- */
+.viewer3d {
+  position: relative;
+  flex: 1;
+  min-height: 380px;
+}
+.viewer3d canvas {
+  display: block;
+}
+.viewer3d-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  gap: 6px;
+}
+.viewer3d-hint {
+  position: absolute;
+  bottom: 8px;
+  right: 12px;
+  font-size: 11px;
+  color: #cdd3db;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  user-select: none;
+}
+.viewer3d-colorbar {
+  position: absolute;
+  right: 12px;
+  top: 50px;
+  bottom: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  user-select: none;
+  pointer-events: none;
+}
+.viewer3d-colorbar .cb-title {
+  font-size: 10.5px;
+  line-height: 1.2;
+  text-align: right;
+  color: #eef1f6;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+.viewer3d-colorbar .cb-row {
+  position: relative;
+  flex: 1;
+  display: flex;
+  gap: 5px;
+}
+.viewer3d-colorbar .cb-labels {
+  position: relative;
+  width: 42px;
+}
+.viewer3d-colorbar .cb-tick {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: #eef1f6;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+}
+.viewer3d-colorbar .cb-yield {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+.viewer3d-colorbar .cb-bar {
+  width: 16px;
+  height: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 2px;
+}
+.viewer3d-machbar {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: #eef1f6;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  user-select: none;
+  pointer-events: none;
+}
+.viewer3d-machbar .mb-bar {
+  width: 130px;
+  height: 10px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+.viewer3d-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 6px;
+  background: rgba(20, 22, 26, 0.82);
+  color: #eef1f6;
+  font-size: 12.5px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  user-select: none;
+}
+.viewer3d-loading .spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #4aa3e0;
+  border-radius: 50%;
+  animation: viewer3d-spin 0.8s linear infinite;
+}
+@keyframes viewer3d-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- Cross-section / chart panels --------------------------------------- */
+.qt-canvaswrap {
+  background: var(--qt-base);
+  border: 1px solid var(--qt-border);
+  border-radius: 5px;
+  padding: 12px;
+}
+.qt-caption {
+  font-size: 11.5px;
+  color: var(--qt-text-dim);
+  margin: 0 0 8px;
+}
+
+/* ---- Status bar ---------------------------------------------------------- */
+.qt-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: linear-gradient(#eaeaed, #dfdfe3);
+  border-top: 1px solid var(--qt-border);
+  font-size: 11.5px;
+  color: var(--qt-text-dim);
+}
+.qt-statusbar .cell {
+  padding: 4px 12px;
+  border-right: 1px solid var(--qt-border);
+}
+.qt-statusbar .cell.grow {
+  flex: 1;
+  border-right: none;
+}
+.qt-statusbar .cell b {
+  color: var(--qt-text);
+}
+
+/* ---- Design wizard ------------------------------------------------------- */
+.wizard {
+  display: flex;
+  min-height: 0;
+  gap: 0;
+  height: 100%;
+}
+.wizard-rail {
+  width: 210px;
+  border-right: 1px solid var(--qt-border);
+  background: var(--qt-panel);
+  padding: 10px 0;
+  flex-shrink: 0;
+}
+.wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  color: var(--qt-text-dim);
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.wizard-step:hover {
+  background: var(--qt-highlight-soft);
+}
+.wizard-step.active {
+  color: var(--qt-text);
+  font-weight: 600;
+  background: var(--qt-base);
+  border-left-color: var(--qt-highlight);
+}
+.wizard-step .num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--qt-border-strong);
+  flex-shrink: 0;
+}
+.wizard-step.active .num {
+  background: var(--qt-highlight);
+}
+.wizard-step.done .num {
+  background: var(--qt-ok);
+}
+.wizard-body {
+  flex: 1;
+  padding: 16px 20px;
+  overflow-y: auto;
+  min-width: 0;
+}
+.wizard-title {
+  font-size: 15px;
+  margin: 0 0 14px;
+  color: var(--qt-text);
+}
+.wizard-nav {
+  display: flex;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--qt-border);
+}
+
+/* ---- Dashboard KPI tiles ------------------------------------------------- */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.kpi-tile {
+  background: var(--qt-base);
+  border: 1px solid var(--qt-border);
+  border-radius: 5px;
+  padding: 10px 12px;
+}
+.kpi-tile .kpi-val {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--qt-text);
+  font-variant-numeric: tabular-nums;
+}
+.kpi-tile .kpi-key {
+  font-size: 11px;
+  color: var(--qt-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-top: 2px;
+}
+
+.muted {
+  color: var(--qt-text-dim);
+}
+.err {
+  color: var(--qt-err);
+  font-size: 12px;
+}

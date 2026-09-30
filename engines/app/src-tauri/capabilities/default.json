@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for the Propulsor main window",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

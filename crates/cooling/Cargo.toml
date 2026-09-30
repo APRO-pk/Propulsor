@@ -1,0 +1,12 @@
+[package]
+name = "cooling"
+description = "Cooling (L3): Bartz + Gnielinski regenerative solver, film/radiation/ablative cooling, material database, and FEM heat-flux export"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+engine-core = { path = "../engine-core" }
+gasdynamics = { path = "../gasdynamics" }
+thermo = { path = "../thermo" }
+serde = { workspace = true }

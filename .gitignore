@@ -1,0 +1,19 @@
+/target
+**/target
+**/*.rs.bk
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+/docker/**/build
+*.log
+.idea
+.vscode
+*.apk
+*.ipa
+*.tmp
+# Tauri build output
+engines/app/src-tauri/target/
+
+tauri-dev.pid
+*.pid

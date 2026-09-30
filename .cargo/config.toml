@@ -1,0 +1,10 @@
+[build]
+# Keep incremental builds fast on large solver crates.
+jobs = 8
+
+[net]
+retry = 3
+
+[alias]
+# Convenience: `cargo run-cli -- <args>` returns a tiny clap with no deps beyond the workspace.
+wt = "watch -x"

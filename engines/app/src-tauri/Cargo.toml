@@ -1,0 +1,27 @@
+[workspace]
+# The Tauri host is intentionally its own workspace: it is the sole `tauri`
+# consumer and has a different dependency surface / build constraints than the
+# pure-Rust solver workspace at the repo root.
+
+[package]
+name = "apro-engine-app"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Propulsor liquid-engine desktop shell (Tauri v2 host)"
+
+# The IPC layer lives HERE (ARCHITECTURE §1), not in a standalone crate, so it
+# is the only package that depends on the `tauri` runtime / build script.
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Path deps into the solver workspace. This crate sits outside the solver
+# workspace on purpose: it is the sole `tauri` consumer.
+engine-core = { path = "../../../crates/engine-core" }
+simulate = { path = "../../../crates/simulate" }
+export = { path = "../../../crates/export" }

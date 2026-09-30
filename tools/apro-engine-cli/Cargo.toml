@@ -1,0 +1,24 @@
+[package]
+name = "apro-engine-cli"
+description = "Headless driver for the Propulsor engine model (CI, golden tests, scripting)"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "apro-engine"
+path = "src/main.rs"
+
+[dependencies]
+engine-core = { path = "../../crates/engine-core" }
+propellants = { path = "../../crates/propellants" }
+sizing-l0 = { path = "../../crates/sizing-l0" }
+simulate = { path = "../../crates/simulate" }
+thermo = { path = "../../crates/thermo" }
+gasdynamics = { path = "../../crates/gasdynamics" }
+cooling = { path = "../../crates/cooling" }
+structures = { path = "../../crates/structures" }
+feedsystem = { path = "../../crates/feedsystem" }
+turbopumps = { path = "../../crates/turbopumps" }
+export = { path = "../../crates/export" }
+serde_json = { workspace = true }

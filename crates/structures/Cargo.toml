@@ -1,0 +1,11 @@
+[package]
+name = "structures"
+description = "Shell stress, combined pressure/thermal stress, buckling, and bolt/flange capacity (L4)"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+engine-core = { path = "../engine-core" }
+sizing-l0 = { path = "../sizing-l0" }
+serde = { workspace = true }

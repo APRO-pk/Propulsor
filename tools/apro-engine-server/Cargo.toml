@@ -1,0 +1,16 @@
+[package]
+name = "apro-engine-server"
+description = "Dependency-free HTTP host: serves the built frontend + JSON API for browser use"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "apro-engine-server"
+path = "src/main.rs"
+
+[dependencies]
+engine-core = { path = "../../crates/engine-core" }
+sizing-l0 = { path = "../../crates/sizing-l0" }
+simulate = { path = "../../crates/simulate" }
+serde_json = { workspace = true }

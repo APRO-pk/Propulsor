@@ -1,0 +1,11 @@
+[package]
+name = "feedsystem"
+description = "Fluid network solver and tank/valve/regulator sizing (L5)"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+engine-core = { path = "../engine-core" }
+propellants = { path = "../propellants" }
+serde = { workspace = true }

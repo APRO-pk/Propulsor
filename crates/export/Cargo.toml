@@ -1,0 +1,14 @@
+[package]
+name = "export"
+description = "PDF report, DXF, P&ID, checklist, and STEP/OBJ-STL geometry export"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+engine-core = { path = "../engine-core" }
+sizing-l0 = { path = "../sizing-l0" }
+gasdynamics = { path = "../gasdynamics" }
+simulate = { path = "../simulate" }
+serde = { workspace = true }
+serde_json = { workspace = true }

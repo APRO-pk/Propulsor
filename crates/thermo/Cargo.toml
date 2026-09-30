@@ -1,0 +1,13 @@
+[package]
+name = "thermo"
+description = "Native equilibrium chemistry solver (Gibbs free-energy minimization, L1)"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+engine-core = { path = "../engine-core" }
+propellants = { path = "../propellants" }
+
+[dependencies.serde]
+workspace = true
