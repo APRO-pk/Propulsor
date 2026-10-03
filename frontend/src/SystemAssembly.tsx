@@ -75,7 +75,7 @@ export function SystemAssembly() {
           eng={eng} ox={ox} fu={fu} OX={OX} FU={FU}
           oxY={oxY} fuY={fuY} injY={injY} injThk={injThk} engTop={engTop}
           bodyR={bodyR} totalH={totalH} airframe={airframe} exploded={exploded}
-          bottleR={bottleR} bottleY={bottleY}
+          bottleR={bottleR} bottleY={bottleY} pumpFed={feed?.feed_type === "pump-fed"}
         />
 
         <gridHelper args={[cam * 4, 24, "#565b62", "#474c52"]} position={[0, -totalH / 2, 0]} />
@@ -103,14 +103,14 @@ type SceneProps = {
   OX: string; FU: string;
   oxY: number; fuY: number; injY: number; injThk: number; engTop: number;
   bodyR: number; totalH: number; airframe: boolean; exploded: boolean;
-  bottleR: number; bottleY: number;
+  bottleR: number; bottleY: number; pumpFed: boolean;
 };
 
 /** The animated assembly. The chamber and nozzle are the real designed contour
  *  (revolved), tanks/pressurant come from the feed study, and each part eases
  *  along the stack axis toward its exploded offset. */
 function AssemblyScene(props: SceneProps) {
-  const { eng, ox, fu, OX, FU, oxY, fuY, injY, injThk, engTop, bodyR, totalH, airframe, exploded, bottleR, bottleY } = props;
+  const { eng, ox, fu, OX, FU, oxY, fuY, injY, injThk, engTop, bodyR, totalH, airframe, exploded, bottleR, bottleY, pumpFed } = props;
 
   const oxRef = useRef<THREE.Group>(null);
   const fuRef = useRef<THREE.Group>(null);
@@ -204,6 +204,26 @@ function AssemblyScene(props: SceneProps) {
         <TankMesh r={fu.r} l={fu.l} color={FU} />
         {showLabels && <Html position={[fu.r, 0, 0]} style={labelStyle}>Fuel tank</Html>}
       </group>
+      {/* Turbopumps (pump-fed only): two pump volutes + turbine disks flanking the
+          chamber, so the architecture reads as pump-fed in the assembly. */}
+      {pumpFed && (
+        <group position={[0, engTop * 0.6, 0]}>
+          {[-1, 1].map((s) => (
+            <group key={s} position={[s * eng.chamberR * 1.7, 0, 0]}>
+              <mesh rotation={[0, 0, Math.PI / 2]}>
+                <cylinderGeometry args={[eng.chamberR * 0.55, eng.chamberR * 0.55, eng.chamberR * 1.0, 20]} />
+                <meshStandardMaterial color={s < 0 ? OX : FU} metalness={0.72} roughness={0.35} />
+              </mesh>
+              <mesh position={[s * eng.chamberR * 0.62, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+                <cylinderGeometry args={[eng.chamberR * 0.38, eng.chamberR * 0.38, eng.chamberR * 0.2, 20]} />
+                <meshStandardMaterial color="#9aa2af" metalness={0.8} roughness={0.3} />
+              </mesh>
+            </group>
+          ))}
+          {exploded && <Html position={[eng.chamberR * 2.4, 0, 0]} style={labelStyle}>Turbopumps</Html>}
+        </group>
+      )}
+
       {/* Injector plate */}
       <group ref={injRef} position={[0, injY, 0]}>
         <mesh rotation={[0, 0, 0]}>

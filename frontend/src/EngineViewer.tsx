@@ -35,6 +35,7 @@ export function EngineViewer({ l0, l2 }: { l0: L0ResultDto; l2?: L2ResultDto | n
   const [loadingStress, setLoadingStress] = useState(false);
   const [ready, setReady] = useState(false);
   const matRef = useRef<THREE.MeshStandardMaterial>(null);
+  const controlsRef = useRef<{ reset: () => void } | null>(null);
 
   const model = useMemo(() => buildEngineGeometry(l0, l2 ?? null), [l0, l2]);
   const channelGeoms = useMemo(() => (channels ? buildChannels(model.inner, model.wall, model.gap, 20) : []), [channels, model]);
@@ -130,7 +131,7 @@ export function EngineViewer({ l0, l2 }: { l0: L0ResultDto; l2?: L2ResultDto | n
         </group>
 
         <gridHelper args={[cam * 4, 24, "#565b62", "#474c52"]} position={[0, -model.length * 0.75, 0]} />
-        <OrbitControls enableDamping dampingFactor={0.08} minDistance={cam * 0.2} maxDistance={cam * 6} />
+        <OrbitControls ref={controlsRef as never} enableDamping dampingFactor={0.08} minDistance={cam * 0.2} maxDistance={cam * 6} />
         <FirstFrame onReady={() => setReady(true)} />
       </Canvas>
 
@@ -142,6 +143,7 @@ export function EngineViewer({ l0, l2 }: { l0: L0ResultDto; l2?: L2ResultDto | n
         {stressMode && <button className={`qt-tool ${bands ? "on" : ""}`} onClick={() => setBands((b) => !b)}>Contour bands</button>}
         {stressMode && <button className={`qt-tool ${isolines ? "on" : ""}`} onClick={() => setIsolines((i) => !i)}>Isolines</button>}
         <button className={`qt-tool ${flow ? "on" : ""}`} onClick={() => setFlow((f) => !f)}>Flow streamlines</button>
+        <button className="qt-tool" onClick={() => controlsRef.current?.reset()} title="Reset the camera to fit the model">Reset view</button>
       </div>
 
       {stressMode && range && <ColorBar min={range.min} max={range.max} allow={range.allow} bands={bands} />}
@@ -170,7 +172,13 @@ function ColorBar({ min, max, allow, bands }: { min: number; max: number; allow:
     const frac = 1 - i / (ticks - 1);
     return { top: `${(i / (ticks - 1)) * 100}%`, value: (min + frac * (max - min)) / 1e6 };
   });
-  const yieldTop = max > min ? (1 - (allow - min) / (max - min)) * 100 : -1;
+  // Position of the yield stress on the bar (0% = top = max σ, 100% = bottom = min σ).
+  const yieldPct = max > min ? (1 - (allow - min) / (max - min)) * 100 : 50;
+  const yieldClamped = Math.max(0, Math.min(100, yieldPct));
+  // When yield falls outside the stress range, clamp to the edge and say which way:
+  // below the floor → the whole field exceeds yield; above the ceiling → all safe.
+  const yieldLabel =
+    yieldPct > 100 ? `yield ▾ ${(allow / 1e6).toFixed(0)} (all σ > yield)` : yieldPct < 0 ? `yield ▴ ${(allow / 1e6).toFixed(0)} (all σ < yield)` : `yield ${(allow / 1e6).toFixed(0)} ▸`;
 
   return (
     <div className="viewer3d-colorbar">
@@ -180,9 +188,7 @@ function ColorBar({ min, max, allow, bands }: { min: number; max: number; allow:
           {labels.map((l, i) => (
             <div key={i} className="cb-tick" style={{ top: l.top }}>{l.value.toFixed(0)}</div>
           ))}
-          {yieldTop >= 0 && yieldTop <= 100 && (
-            <div className="cb-yield" style={{ top: `${yieldTop}%` }}>yield ▸</div>
-          )}
+          <div className="cb-yield" style={{ top: `${yieldClamped}%`, color: yieldPct > 100 ? "#c23b34" : undefined }}>{yieldLabel}</div>
         </div>
         <div className="cb-bar" style={{ background: `linear-gradient(to top, ${stops.join(",")})` }} />
       </div>
