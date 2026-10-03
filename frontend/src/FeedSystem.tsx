@@ -10,6 +10,10 @@ const FEEDS: [string, string][] = [
   ["pump-fed", "Pump-fed"],
 ];
 
+/** Adaptive mass/volume formatting so small engines don't collapse to "0.0". */
+const kg = (v: number) => `${v < 1 ? v.toFixed(3) : v.toFixed(1)} kg`;
+const vol = (v: number) => `${v < 1 ? v.toFixed(3) : v.toFixed(1)} L`;
+
 export function FeedSystem() {
   const [burn, setBurn] = useState(30);
   const [feedType, setFeedType] = useState("");
@@ -73,14 +77,14 @@ export function FeedSystem() {
           <table className="qt-proptable">
             <thead><tr><th></th><th>Oxidizer</th><th>Fuel</th></tr></thead>
             <tbody>
-              <tr><td>Propellant mass</td><td className="val">{study.ox_tank.propellant_mass_kg.toFixed(1)} kg</td><td className="val">{study.fuel_tank.propellant_mass_kg.toFixed(1)} kg</td></tr>
-              <tr><td>Volume</td><td className="val">{study.ox_tank.volume_l.toFixed(1)} L</td><td className="val">{study.fuel_tank.volume_l.toFixed(1)} L</td></tr>
+              <tr><td>Propellant mass</td><td className="val">{kg(study.ox_tank.propellant_mass_kg)}</td><td className="val">{kg(study.fuel_tank.propellant_mass_kg)}</td></tr>
+              <tr><td>Volume</td><td className="val">{vol(study.ox_tank.volume_l)}</td><td className="val">{vol(study.fuel_tank.volume_l)}</td></tr>
               <tr><td>Ø × L</td><td className="val">{(study.ox_tank.diameter_m * 1000).toFixed(0)}×{(study.ox_tank.length_m * 1000).toFixed(0)} mm</td><td className="val">{(study.fuel_tank.diameter_m * 1000).toFixed(0)}×{(study.fuel_tank.length_m * 1000).toFixed(0)} mm</td></tr>
               <tr><td>Wall thickness</td><td className="val">{(study.ox_tank.wall_thickness_m * 1000).toFixed(2)} mm</td><td className="val">{(study.fuel_tank.wall_thickness_m * 1000).toFixed(2)} mm</td></tr>
-              <tr><td>Tank mass</td><td className="val">{study.ox_tank.tank_mass_kg.toFixed(1)} kg</td><td className="val">{study.fuel_tank.tank_mass_kg.toFixed(1)} kg</td></tr>
+              <tr><td>Tank mass</td><td className="val">{kg(study.ox_tank.tank_mass_kg)}</td><td className="val">{kg(study.fuel_tank.tank_mass_kg)}</td></tr>
             </tbody>
           </table>
-          <div className="qt-field" style={{ marginTop: 6 }}><span>Total propellant / dry tanks</span><b>{study.total_propellant_mass_kg.toFixed(1)} / {study.dry_tank_mass_kg.toFixed(1)} kg</b></div>
+          <div className="qt-field" style={{ marginTop: 6 }}><span>Total propellant / dry tanks</span><b>{kg(study.total_propellant_mass_kg)} / {kg(study.dry_tank_mass_kg)}</b></div>
         </fieldset>
 
         <fieldset className="qt-groupbox">

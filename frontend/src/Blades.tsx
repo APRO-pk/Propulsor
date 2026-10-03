@@ -11,10 +11,12 @@ const AXIS = { fill: "#6b7280", fontSize: 11 } as const;
 const TT = { background: "#fff", border: "1px solid #b9bcc4", borderRadius: 4, fontSize: 12 } as const;
 
 export function Blades() {
-  const [speed, setSpeed] = useState(20000);
+  const design = useEngineStore((s) => s.design);
+  const rev = design?.meta.revision;
+  // Shaft speed is a shared design param (also edited on the Turbopumps tab).
+  const speed = design?.params?.["turbo.shaft_speed_rpm"] ?? 20000;
   const [study, setStudy] = useState<BladeStudyDto | null>(null);
   const [mode, setMode] = useState<"pump" | "turbine" | "supersonic">("pump");
-  const rev = useEngineStore((s) => s.design?.meta.revision);
 
   useEffect(() => {
     let live = true;
@@ -40,7 +42,7 @@ export function Blades() {
             <button className={`qt-tool ${mode === "supersonic" ? "on" : ""}`} style={{ marginLeft: 6 }} onClick={() => setMode("supersonic")}>Supersonic turbine</button>
           </span>
         </div>
-        <label className="qt-field"><span>Shaft speed (rpm)</span><input type="number" step={1000} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} /></label>
+        <ParamField label="Shaft speed" k="turbo.shaft_speed_rpm" def={20000} step={1000} unit="rpm" hint="shared with the Turbopumps tab" />
         <p className="muted">{blade.summary}</p>
       </fieldset>
 

@@ -42,7 +42,10 @@ pub fn solve_turbine(input: &TurbineInput) -> TurbineResult {
     let pr = (input.inlet_pressure_pa / input.exit_pressure_pa).max(1.0);
     let exponent = (input.gamma - 1.0) / input.gamma;
     let temp_ratio = pr.powf(-exponent);
-    let exit_temp = input.inlet_temp_k * temp_ratio;
+    // Actual (efficiency-corrected) exit temperature: an inefficient turbine
+    // extracts less work, so it leaves the gas hotter than the isentropic ideal.
+    // ΔT_actual = η·(T_in − T_in·temp_ratio), so T_exit = T_in·(1 − η·(1−temp_ratio)).
+    let exit_temp = input.inlet_temp_k * (1.0 - input.efficiency * (1.0 - temp_ratio));
     let specific_work = input.cp_j_kg_k * input.inlet_temp_k * (1.0 - temp_ratio) * input.efficiency;
     let shaft = input.mass_flow_kg_s * specific_work;
     // Turbine specific speed (rpm, m³/s, m) using the gas volumetric flow. The

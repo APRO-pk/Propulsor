@@ -7,10 +7,20 @@ function Badge({ ok, good, bad }: { ok: boolean; good: string; bad: string }) {
   return <span className={`qt-badge ${ok ? "solved" : "failed"}`}>{ok ? good : bad}</span>;
 }
 
+/** Power with adaptive units: W below 1 kW, kW otherwise (3 sig figs when small). */
+function power(w: number): string {
+  if (w < 1000) return `${w.toFixed(0)} W`;
+  if (w < 1e4) return `${(w / 1000).toFixed(2)} kW`;
+  return `${(w / 1000).toFixed(0)} kW`;
+}
+
 export function Turbopumps() {
-  const [rpm, setRpm] = useState(20000);
+  const design = useEngineStore((s) => s.design);
+  const rev = design?.meta.revision;
+  // Shaft speed is a shared design param (also edited on the Blades tab).
+  const rpm = design?.params?.["turbo.shaft_speed_rpm"] ?? 20000;
+  const ggInput = design?.params?.["turbo.gg_flow_fraction"] ?? 0.03;
   const [study, setStudy] = useState<TurbopumpStudyDto | null>(null);
-  const rev = useEngineStore((s) => s.design?.meta.revision);
 
   useEffect(() => {
     let live = true;
@@ -27,10 +37,7 @@ export function Turbopumps() {
     <div>
       <fieldset className="qt-groupbox">
         <legend>Shaft</legend>
-        <label className="qt-field">
-          <span>Shaft speed (rpm)</span>
-          <input type="number" step={500} value={rpm} onChange={(e) => setRpm(Number(e.target.value))} />
-        </label>
+        <ParamField label="Shaft speed" k="turbo.shaft_speed_rpm" def={20000} step={500} unit="rpm" hint="shared with the Blades tab" />
       </fieldset>
 
       <fieldset className="qt-groupbox">
@@ -60,7 +67,7 @@ export function Turbopumps() {
           <table className="qt-proptable">
             <tbody>
               <tr><td>Head rise</td><td className="val">{pump.head_rise_m.toFixed(0)} m</td></tr>
-              <tr><td>Shaft power</td><td className="val">{(pump.shaft_power_w / 1000).toFixed(0)} kW</td></tr>
+              <tr><td>Shaft power</td><td className="val">{power(pump.shaft_power_w)}</td></tr>
               <tr><td>Specific speed Nₛ</td><td className="val">{pump.specific_speed.toFixed(0)} ({pump.pump_type})</td></tr>
               <tr><td>NPSH avail / req</td><td className="val">{pump.npsh_available_m.toFixed(1)} / {pump.npsh_required_m.toFixed(1)} m</td></tr>
               <tr><td>Cavitation margin</td><td className="val"><Badge ok={pump.cavitation_margin_m > 0} good={`${pump.cavitation_margin_m.toFixed(1)} m`} bad={`${pump.cavitation_margin_m.toFixed(1)} m`} /></td></tr>
@@ -73,7 +80,7 @@ export function Turbopumps() {
           <table className="qt-proptable">
             <tbody>
               <tr><td>Pressure ratio</td><td className="val">{turbine.pressure_ratio.toFixed(2)}</td></tr>
-              <tr><td>Shaft power</td><td className="val">{(turbine.shaft_power_w / 1000).toFixed(0)} kW</td></tr>
+              <tr><td>Shaft power</td><td className="val">{power(turbine.shaft_power_w)}</td></tr>
               <tr><td>Exit temperature</td><td className="val">{turbine.exit_temp_k.toFixed(0)} K</td></tr>
               <tr><td>Specific speed</td><td className="val">{turbine.specific_speed.toFixed(1)}</td></tr>
             </tbody>
@@ -112,13 +119,17 @@ export function Turbopumps() {
         <legend>Gas-generator cycle balance</legend>
         <table className="qt-proptable">
           <tbody>
-            <tr><td>GG flow fraction</td><td className="val">{(gg_cycle.gg_flow_fraction * 100).toFixed(1)} %</td></tr>
-            <tr><td>GG flow</td><td className="val">{gg_cycle.gg_flow_kg_s.toFixed(2)} kg/s</td></tr>
-            <tr><td>Chamber flow</td><td className="val">{gg_cycle.chamber_flow_kg_s.toFixed(2)} kg/s</td></tr>
-            <tr><td>Pump / turbine power</td><td className="val">{(gg_cycle.pump_power_w / 1000).toFixed(0)} / {(gg_cycle.turbine_power_w / 1000).toFixed(0)} kW</td></tr>
-            <tr><td>Power balance</td><td className="val"><Badge ok={Math.abs(gg_cycle.margin - 1) < 0.05} good={`${gg_cycle.margin.toFixed(2)} balanced`} bad={`${gg_cycle.margin.toFixed(2)}`} /></td></tr>
+            <tr><td>GG fraction (input)</td><td className="val">{(ggInput * 100).toFixed(1)} %</td></tr>
+            <tr><td>GG fraction (balanced)</td><td className="val">{(gg_cycle.gg_flow_fraction * 100).toFixed(1)} %</td></tr>
+            <tr><td>GG flow</td><td className="val">{gg_cycle.gg_flow_kg_s.toFixed(3)} kg/s</td></tr>
+            <tr><td>Chamber flow</td><td className="val">{gg_cycle.chamber_flow_kg_s.toFixed(3)} kg/s</td></tr>
+            <tr><td>Pump / turbine power</td><td className="val">{power(gg_cycle.pump_power_w)} / {power(gg_cycle.turbine_power_w)}</td></tr>
+            <tr><td>Power balance</td><td className="val"><Badge ok={gg_cycle.margin >= 1 - 0.05} good={`${gg_cycle.margin.toFixed(2)} balanced`} bad={`${gg_cycle.margin.toFixed(2)} under-powered`} /></td></tr>
           </tbody>
         </table>
+        <p className="qt-caption" style={{ marginTop: 6 }}>
+          <b>Input</b> fraction sizes the turbine drive; <b>balanced</b> is the fraction the gas-generator cycle needs to make the turbine power the pump.
+        </p>
       </fieldset>
     </div>
   );

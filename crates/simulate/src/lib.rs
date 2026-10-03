@@ -622,4 +622,33 @@ mod tests {
         );
         assert!((150.0..=320.0).contains(&l2.isp_s), "delivered Isp out of band: {}", l2.isp_s);
     }
+
+    /// Regression for non-repeatable results (report #25/#30/#37/#52): the same
+    /// inputs must give bit-identical outputs across repeated study calls.
+    #[test]
+    fn studies_are_deterministic() {
+        use engine_core::FieldValue;
+        let mut d = sizing_l0::krzycki_golden_design();
+        // Raise Pc so the turbopump path is exercised.
+        d.apply_field("chamber_pressure", FieldValue::Num(8.0e6)).unwrap();
+
+        let a = design::turbopump_study(&mut d, 20_000.0).unwrap();
+        let b = design::turbopump_study(&mut d, 20_000.0).unwrap();
+        assert_eq!(
+            a.shaft.first_critical_rpm.to_bits(),
+            b.shaft.first_critical_rpm.to_bits(),
+            "shaft critical speed not repeatable: {} vs {}",
+            a.shaft.first_critical_rpm, b.shaft.first_critical_rpm
+        );
+        assert_eq!(a.pump.shaft_power_w.to_bits(), b.pump.shaft_power_w.to_bits(), "pump power not repeatable");
+
+        let c1 = design::cooling_study(&mut d, "OFHC Copper", "regen").unwrap();
+        let c2 = design::cooling_study(&mut d, "OFHC Copper", "regen").unwrap();
+        assert_eq!(
+            c1.regen.max_wall_temp_k.to_bits(),
+            c2.regen.max_wall_temp_k.to_bits(),
+            "wall temperature not repeatable: {} vs {}",
+            c1.regen.max_wall_temp_k, c2.regen.max_wall_temp_k
+        );
+    }
 }

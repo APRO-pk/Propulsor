@@ -921,6 +921,13 @@ function mockIssues(): IssuesReportDto {
   if (["GoxKerosene", "GoxGasoline", "GoxEthanol", "GoxMethanol"].includes(pair))
     add("warn", "Feed System", "Gaseous oxidizer (GOX): the tank is sized as a compressed gas — expect a large bottle volume or a high storage pressure");
 
+  if (isPump) {
+    const l0 = liveDesign.caches.find((c) => c.tier === "L0")?.payload as L0ResultDto | undefined;
+    const flow = l0?.total_flow ?? 0;
+    if (flow > 0 && flow < 0.5)
+      add("warn", "Feed System", `Pump-fed selected at ${flow.toFixed(3)} kg/s — turbopumps are very hard to build this small; consider a pressure-fed system`);
+  }
+
   const failed = issues.filter((i) => i.severity === "fail").length;
   return { issues, failed, warnings: issues.length - failed };
 }
@@ -1600,7 +1607,9 @@ function mockTurbopump(rpm: number): TurbopumpStudyDto {
   const cpT = pval("turbo.turbine_cp", 2000);
   const tinT = pval("turbo.turbine_inlet_temp_k", 950);
   const turbPr = (pcPa * pval("turbo.turbine_inlet_pressure_factor", 0.9)) / (pval("turbo.turbine_exit_pressure_bar", 3) * 1e5);
-  const exitT = tinT * Math.pow(1 / Math.max(turbPr, 1.01), (gT - 1) / gT);
+  const turbTempRatio = Math.pow(1 / Math.max(turbPr, 1.01), (gT - 1) / gT);
+  // Efficiency-corrected exit temperature (lower efficiency ⇒ hotter exit).
+  const exitT = tinT * (1 - turbEff * (1 - turbTempRatio));
   const ggFlow = Math.max(totalFlow * ggFrac, 0.05);
   const dhT = cpT * tinT * (1 - Math.pow(Math.max(turbPr, 1.01), -(gT - 1) / gT));
   const turbPower = ggFlow * dhT * turbEff;

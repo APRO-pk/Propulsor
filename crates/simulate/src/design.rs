@@ -734,7 +734,7 @@ pub fn collect_issues(design: &mut EngineDesign) -> Result<IssuesReport, EngineE
 
     // --- Turbopumps / blades (only meaningful for a pump-fed engine) ---
     if is_pump_fed {
-        let rpm = 20_000.0;
+        let rpm = design.param("turbo.shaft_speed_rpm", 20_000.0);
         if let Ok(tp) = turbopump_study(design, rpm) {
             if !tp.bearing.dn_ok {
                 add("warn", "Turbopumps", format!("Bearing DN {:.2}M exceeds its limit", tp.bearing.dn_value / 1e6));
@@ -775,6 +775,18 @@ pub fn collect_issues(design: &mut EngineDesign) -> Result<IssuesReport, EngineE
     if oxidizer_is_gaseous(pair) {
         add("warn", "Feed System",
             "Gaseous oxidizer (GOX): the tank is sized as a compressed gas — expect a large bottle volume or a high storage pressure".into());
+    }
+    // Turbopumps are impractical to build below roughly 0.5 kg/s total flow —
+    // a small pressure-fed system is more realistic there (#33).
+    if is_pump_fed {
+        if let Ok(l0) = payload::<sizing_l0::L0Result>(design, Tier::L0) {
+            let flow = l0.total_flow.as_si();
+            if flow < 0.5 {
+                add("warn", "Feed System", format!(
+                    "Pump-fed selected at {flow:.3} kg/s — turbopumps are very hard to build this small; consider a pressure-fed system"
+                ));
+            }
+        }
     }
 
     let failed = issues.iter().filter(|i| i.severity == "fail").count();

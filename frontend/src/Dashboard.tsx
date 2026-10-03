@@ -30,8 +30,9 @@ export function Dashboard() {
 
   if (!l0) return <p className="muted">No design solved.</p>;
 
+  const thrustN = design?.operating_point.thrust ?? 0;
   const tiles: [string, string][] = [
-    ["Thrust", `${((design?.operating_point.thrust ?? 0) / 1000).toFixed(2)} kN`],
+    ["Thrust", thrustN < 1000 ? `${thrustN.toFixed(0)} N` : `${(thrustN / 1000).toFixed(2)} kN`],
     ["Isp (SL, ideal)", `${l0.isp_s.toFixed(0)} s`],
     ["Chamber P", `${((design?.operating_point.chamber_pressure ?? 0) / 1e5).toFixed(1)} bar`],
     ["T_c", `${(l1?.tc_k ?? l0.tc_k).toFixed(0)} K`],
@@ -39,7 +40,7 @@ export function Dashboard() {
     ["Throat Ø", `${(l0.throat_diameter * 1000).toFixed(1)} mm`],
     ["Exit Ø", `${(l0.exit_diameter * 1000).toFixed(1)} mm`],
     ["Area ratio", l0.area_ratio.toFixed(2)],
-    ["Total flow", `${l0.total_flow.toFixed(2)} kg/s`],
+    ["Total flow", `${l0.total_flow < 1 ? l0.total_flow.toFixed(3) : l0.total_flow.toFixed(2)} kg/s`],
   ];
 
   return (
