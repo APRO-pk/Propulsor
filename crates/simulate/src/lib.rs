@@ -559,4 +559,48 @@ mod tests {
         assert!((pe - 101_325.0).abs() / 101_325.0 < 0.05, "pe = {pe}");
         assert!(isp > 200.0, "isp = {isp}");
     }
+
+    /// Regression for the stale-cache freeze (report root cause A): after a design
+    /// has solved once, editing an input must invalidate and recompute the dependent
+    /// tiers — not leave frozen caches behind that `resolve` skips.
+    #[test]
+    fn editing_an_input_recomputes_tiers_not_frozen() {
+        use engine_core::{FieldValue, SolveStatus, Tier};
+
+        let mut d = sizing_l0::krzycki_golden_design();
+        resolve(&mut d).unwrap();
+        let throat_a = payload::<sizing_l0::L0Result>(&d, Tier::L0).unwrap().throat_area.as_si();
+
+        // Double the chamber pressure: throat area scales ~1/Pc, so it must shrink.
+        let pc0 = d.operating_point.chamber_pressure.as_si();
+        d.apply_field("chamber_pressure", FieldValue::Num(pc0 * 2.0)).unwrap();
+        resolve(&mut d).unwrap();
+        let throat_b = payload::<sizing_l0::L0Result>(&d, Tier::L0).unwrap().throat_area.as_si();
+        assert!(
+            throat_b < 0.6 * throat_a,
+            "L0 frozen: throat {throat_a} -> {throat_b} after doubling Pc"
+        );
+
+        // Changing L* must move the chamber length (report #20/#21). Baseline is
+        // taken now (after the Pc edit) so the two edits don't cancel.
+        let cham_len_pre = payload::<sizing_l0::L0Result>(&d, Tier::L0).unwrap().chamber_length.as_si();
+        d.apply_field("l_star", FieldValue::Num(2.0)).unwrap();
+        resolve(&mut d).unwrap();
+        let cham_len_post = payload::<sizing_l0::L0Result>(&d, Tier::L0).unwrap().chamber_length.as_si();
+        assert!(
+            (cham_len_post - cham_len_pre).abs() / cham_len_pre > 0.1,
+            "chamber length frozen: {cham_len_pre} -> {cham_len_post} after changing L*"
+        );
+
+        // Every tier comes back Solved with no leftover Stale entries or duplicates.
+        assert!(
+            d.caches.iter().all(|c| c.status == SolveStatus::Solved),
+            "a tier was left non-Solved after re-resolve"
+        );
+        let tiers: Vec<Tier> = d.caches.iter().map(|c| c.tier).collect();
+        let mut uniq = tiers.clone();
+        uniq.sort();
+        uniq.dedup();
+        assert_eq!(tiers.len(), uniq.len(), "duplicate tier caches after re-resolve");
+    }
 }

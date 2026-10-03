@@ -105,14 +105,15 @@ pub fn invalidated_tiers(root: Tier) -> Vec<Tier> {
         .collect()
 }
 
-/// Mark `root` and every higher tier as stale on a design (lazy recompute hook).
+/// Invalidate `root` and every higher tier on a design (lazy recompute hook).
+///
+/// The invalidated tier caches are **removed**, not merely flagged: `simulate::resolve`
+/// skips any tier that still has a cache entry, so leaving a stale entry behind would
+/// freeze every downstream value after the first solve. Dropping the entries lets
+/// `resolve` rebuild exactly the invalidated tiers from the current inputs.
 pub fn mark_stale_from_root(design: &mut EngineDesign, root: Tier) {
     let stale = invalidated_tiers(root);
-    for t in stale {
-        if let Some(cache) = design.caches.iter_mut().find(|c| c.tier == t) {
-            cache.status = crate::tier::SolveStatus::Stale;
-        }
-    }
+    design.caches.retain(|c| !stale.contains(&c.tier));
 }
 
 /// Serialize a design to a RON project-file body.
