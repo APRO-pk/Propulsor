@@ -90,8 +90,11 @@ pub struct ControlInput {
     pub combustion_delay_ms: f64,
     /// Commanded throttle step target (fraction of rated Pc), e.g. 0.8.
     pub throttle_target: f64,
-    /// Turbine-discharge-temperature redline (K); used only when pump-fed.
+    /// Turbine-inlet-temperature redline (K); used only when pump-fed.
     pub turbine_redline_k: f64,
+    /// Nominal turbine-inlet (gas-generator) temperature (K), to sanity-check the
+    /// redline against — a redline at/below nominal can never trip.
+    pub turbine_inlet_temp_k: f64,
 }
 
 /// Build the control study: derive the suite, chamber dynamics, and simulate the
@@ -158,10 +161,12 @@ pub fn solve_control(input: &ControlInput) -> ControlStudy {
     }
     actuators.push(ControlActuator { name: "Igniter".into(), function: "on/off".into(), closed_loop: false, note: "start-sequence spark/torch".into() });
 
-    // Redlines.
+    // Redlines. The turbine protection redline is on the turbine *inlet* (gas-
+    // generator) temperature — the limiting gas temperature — not the discharge,
+    // which is always cooler and could never reach a redline set above the inlet.
     let mut redlines = vec![Redline { name: "Chamber overpressure".into(), limit: input.pc_pa / 1e5 * 1.2, unit: "bar".into() }];
     if pump_fed {
-        redlines.push(Redline { name: "Turbine discharge temperature".into(), limit: input.turbine_redline_k, unit: "K".into() });
+        redlines.push(Redline { name: "Turbine inlet temperature".into(), limit: input.turbine_redline_k, unit: "K".into() });
     }
 
     // Closed-loop Pc throttle step: PI on a first-order+dead-time plant, IMC-tuned
@@ -192,6 +197,12 @@ pub fn solve_control(input: &ControlInput) -> ControlStudy {
                 input.pc_bandwidth_hz, deadtime_bw, input.combustion_delay_ms
             ));
         }
+    }
+    if pump_fed && input.turbine_redline_k <= input.turbine_inlet_temp_k {
+        warnings.push(format!(
+            "Turbine redline {:.0} K is at/below the nominal turbine-inlet temperature {:.0} K — it can never trip; set it above the operating inlet temperature with margin",
+            input.turbine_redline_k, input.turbine_inlet_temp_k
+        ));
     }
 
     let control_law = if staged { "PI (multivariable capable)" } else { "PI (proportional-integral)" }.to_string();
@@ -301,7 +312,8 @@ mod tests {
             sample_rate_hz: 50.0,
             combustion_delay_ms: 1.5,
             throttle_target: 0.8,
-            turbine_redline_k: 1100.0,
+            turbine_redline_k: 1150.0,
+            turbine_inlet_temp_k: 950.0,
         }
     }
 

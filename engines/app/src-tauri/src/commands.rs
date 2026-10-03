@@ -138,6 +138,15 @@ pub fn validation_study(state: State<'_, AppState>) -> Result<serde_json::Value,
     serde_json::to_value(study).map_err(|e| e.to_string())
 }
 
+/// Consolidated issues/warnings report: every failed margin / domain violation /
+/// study warning gathered in one place.
+#[tauri::command]
+pub fn issues_report(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let mut design = current_design(&state)?;
+    let report = simulate::design::collect_issues(&mut design).map_err(|e| e.to_string())?;
+    serde_json::to_value(report).map_err(|e| e.to_string())
+}
+
 /// Trade/optimization studies (section G): O/F, expansion, L*, material, injector.
 #[tauri::command]
 pub fn trade_bundle(state: State<'_, AppState>) -> Result<serde_json::Value, String> {

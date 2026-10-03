@@ -627,8 +627,166 @@ pub fn control_study(design: &mut EngineDesign, feed_type: &str) -> Result<feeds
         sample_rate_hz: design.param("control.sample_rate_hz", 50.0).clamp(1.0, 5000.0),
         combustion_delay_ms: design.param("control.combustion_delay_ms", 1.5).clamp(0.0, 20.0),
         throttle_target: design.param("control.throttle_target", 0.8).clamp(0.2, 1.5),
-        turbine_redline_k: design.param("control.turbine_redline_k", 1100.0),
+        // Redline defaults to a margin above the nominal turbine-inlet temperature
+        // (so it protects against an over-temperature excursion and can actually trip).
+        turbine_inlet_temp_k: design.param("turbo.turbine_inlet_temp_k", 950.0),
+        turbine_redline_k: design.param(
+            "control.turbine_redline_k",
+            design.param("turbo.turbine_inlet_temp_k", 950.0) + 200.0,
+        ),
     }))
+}
+
+// ---- Consolidated issues / warnings report -------------------------------
+
+/// One design-check finding.
+#[derive(Debug, Clone, Serialize)]
+pub struct Issue {
+    /// "fail" (a hard margin/domain violation) or "warn" (an advisory).
+    pub severity: String,
+    /// The subsystem / tab the finding belongs to.
+    pub area: String,
+    pub message: String,
+}
+
+/// All design checks gathered in one place, so failures aren't hidden per-tab.
+#[derive(Debug, Clone, Serialize)]
+pub struct IssuesReport {
+    pub issues: Vec<Issue>,
+    pub failed: usize,
+    pub warnings: usize,
+}
+
+/// Run the key studies and collect every failed margin / domain violation / study
+/// warning into a single report (report issues #27, #38, #45, #50, #55; Missing-Option #17).
+pub fn collect_issues(design: &mut EngineDesign) -> Result<IssuesReport, EngineError> {
+    resolve(design)?;
+    let mut issues: Vec<Issue> = Vec::new();
+    let mut add = |sev: &str, area: &str, message: String| {
+        issues.push(Issue { severity: sev.into(), area: area.into(), message });
+    };
+
+    let pc = design.operating_point.chamber_pressure.as_si();
+    let pair = design.propellant.pair;
+    let vapor = propellants::props_for(pair).and_then(|p| p.vapor_pressure_pa);
+    let self_press = vapor.map(|v| v >= 1.25 * pc).unwrap_or(false);
+    let is_pump_fed = !self_press && pc > 3.5e6;
+
+    // --- Cooling ---
+    let material = design.materials.chamber.clone().unwrap_or_else(|| "OFHC Copper".into());
+    let method = design
+        .geometry
+        .cooling_jacket
+        .as_ref()
+        .and_then(|c| c.cooling_method.clone())
+        .unwrap_or_else(|| "regen".into());
+    if let Ok(c) = cooling_study(design, &material, &method) {
+        if c.regen.max_wall_temp_k > c.regen.wall_material_limit_k {
+            add("fail", "Cooling", format!(
+                "Wall temperature {:.0} K exceeds the {} limit {:.0} K (margin {:.0} K)",
+                c.regen.max_wall_temp_k, c.selected_material, c.regen.wall_material_limit_k,
+                c.regen.wall_material_limit_k - c.regen.max_wall_temp_k
+            ));
+        }
+        if c.regen.min_boiling_margin_k < 0.0 {
+            add("fail", "Cooling", format!("Coolant boils — boiling margin {:.0} K", c.regen.min_boiling_margin_k));
+        }
+        if method == "regen" {
+            if let Some(mat) = cooling::materials::by_name(&material) {
+                if !matches!(mat.cooling_class, cooling::materials::CoolingClass::Regenerative) {
+                    add("warn", "Cooling", format!(
+                        "{material} is a {:?}-class material but regenerative cooling is selected",
+                        mat.cooling_class
+                    ));
+                }
+            }
+        }
+        if let Some(ext) = &c.nozzle_extension {
+            if !ext.material_ok {
+                add("fail", "Cooling", format!(
+                    "Radiation skirt wall {:.0} K exceeds the {} limit {:.0} K",
+                    ext.equilibrium_wall_temp_k,
+                    c.nozzle_extension_material.clone().unwrap_or_default(),
+                    ext.material_limit_k
+                ));
+            }
+        }
+    }
+
+    // --- Analysis (structures + injector/instability) ---
+    if let Ok(a) = analysis_study(design) {
+        if a.stress.min_margin < 1.0 {
+            add("fail", "Analysis", format!(
+                "Structural margin {:.2} below 1.0 (peak σ {:.0} MPa)",
+                a.stress.min_margin, a.stress.max_combined_stress_pa / 1e6
+            ));
+        }
+        if !a.instability.stable {
+            add("warn", "Analysis", format!(
+                "Combustion-instability risk: {} {:.0} Hz, margin {:.2}",
+                a.instability.dominant_mode, a.instability.dominant_frequency_hz, a.instability.stability_margin
+            ));
+        }
+        for f in &a.injector.flags {
+            add("warn", "Injector", f.clone());
+        }
+    }
+
+    // --- Turbopumps / blades (only meaningful for a pump-fed engine) ---
+    if is_pump_fed {
+        let rpm = 20_000.0;
+        if let Ok(tp) = turbopump_study(design, rpm) {
+            if !tp.bearing.dn_ok {
+                add("warn", "Turbopumps", format!("Bearing DN {:.2}M exceeds its limit", tp.bearing.dn_value / 1e6));
+            }
+            if !tp.bearing.life_ok {
+                add("warn", "Turbopumps", "Bearing L10 life is below the required life".into());
+            }
+            if tp.pump.cavitation_margin_m < 0.0 {
+                add("warn", "Turbopumps", format!("Pump cavitates — NPSH margin {:.1} m", tp.pump.cavitation_margin_m));
+            }
+            if !tp.shaft.subcritical {
+                add("warn", "Turbopumps", format!("Shaft runs supercritical (N_cr {:.0} rpm < {:.0} rpm)", tp.shaft.first_critical_rpm, rpm));
+            }
+            if tp.gg_cycle.margin < 1.0 {
+                add("warn", "Turbopumps", format!("Gas-generator cycle under-powered — turbine/pump power {:.2}", tp.gg_cycle.margin));
+            }
+            let bore_mm = design.param("turbo.bearing_bore_mm", 45.0);
+            let shaft_mm = tp.shaft.diameter_m * 1000.0;
+            if bore_mm > 3.0 * shaft_mm {
+                add("warn", "Turbopumps", format!(
+                    "Bearing bore {bore_mm:.0} mm is far larger than the {shaft_mm:.1} mm shaft — incompatible sizing"
+                ));
+            }
+        }
+        if let Ok(b) = blade_study(design, rpm) {
+            for w in &b.warnings {
+                add("warn", "Blades", w.clone());
+            }
+        }
+        if let Ok(ctrl) = control_study(design, "") {
+            for w in &ctrl.warnings {
+                add("warn", "Control", w.clone());
+            }
+        }
+    }
+
+    // --- Feed system ---
+    if oxidizer_is_gaseous(pair) {
+        add("warn", "Feed System",
+            "Gaseous oxidizer (GOX): the tank is sized as a compressed gas — expect a large bottle volume or a high storage pressure".into());
+    }
+
+    let failed = issues.iter().filter(|i| i.severity == "fail").count();
+    let warnings = issues.len() - failed;
+    Ok(IssuesReport { issues, failed, warnings })
+}
+
+/// True when the oxidizer is stored as a gas (GOX pairs), so its tank density
+/// follows the ideal-gas law at the tank pressure rather than a liquid density.
+pub fn oxidizer_is_gaseous(pair: engine_core::PropellantPair) -> bool {
+    use engine_core::PropellantPair as P;
+    matches!(pair, P::GoxKerosene | P::GoxGasoline | P::GoxEthanol | P::GoxMethanol)
 }
 
 /// Representative separate oxidizer/fuel bulk densities for a pair (kg/m³).
@@ -731,7 +889,7 @@ pub fn feed_study(design: &mut EngineDesign, burn_time_s: f64, feed_type: &str) 
     let l0: sizing_l0::L0Result = payload(design, Tier::L0)?;
     let pc = design.operating_point.chamber_pressure.as_si();
     let pair = design.propellant.pair;
-    let (ox_rho, fuel_rho) = component_densities(pair);
+    let (ox_rho_liquid, fuel_rho) = component_densities(pair);
     let props = propellants::props_for(pair);
     let vapor = props.and_then(|p| p.vapor_pressure_pa);
 
@@ -758,6 +916,16 @@ pub fn feed_study(design: &mut EngineDesign, burn_time_s: f64, feed_type: &str) 
         "self-pressurizing" => vapor.unwrap_or(required_tank),
         "pump-fed" => pumpfed_tank,
         _ => required_tank,
+    };
+
+    // Gaseous-oxidizer (GOX) pairs store the oxidizer as a compressed gas, so its
+    // tank density follows the ideal-gas law at the tank pressure (≈ P·MW/(R·T)),
+    // not the liquid-oxygen density. This makes the GOX tank volume physical.
+    let ox_rho = if oxidizer_is_gaseous(pair) {
+        let storage_t = design.param("feed.gas_storage_temp_k", 293.0).max(100.0);
+        (tank_pressure * 0.032 / (8.314462 * storage_t)).max(0.1)
+    } else {
+        ox_rho_liquid
     };
 
     let tp = TankParams {

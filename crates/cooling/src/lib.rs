@@ -133,87 +133,130 @@ pub fn solve_l3(input: &L3Input) -> Result<CoolingResult, EngineError> {
     let wall_k = input.wall_material.thermal_conductivity_w_m_k;
     let wall_limit = input.wall_material.max_service_temp_k;
 
-    // Coolant is water by default.
+    // Coolant: water by default. Its bulk temperature is *marched* along the
+    // circuit (not pinned at a constant), so it enters cool and heats realistically.
     let coolant_rho = 1000.0;
     let coolant_k = 0.6;
     let coolant_mu = 0.001;
+    let coolant_cp = 4186.0;
+    let coolant_inlet_k = 300.0;
 
-    let mut stations = Vec::with_capacity(input.stations.len());
+    // Coolant mass flow from the channel velocity and the annular flow area at the
+    // throat (the tightest section), plus the single-circuit coolant-side coefficient.
+    let d_h = 2.0 * input.coolant_gap_m;
+    let channel_area = std::f64::consts::PI * (2.0 * r_t) * input.coolant_gap_m;
+    let m_dot_cool = (coolant_rho * input.coolant_velocity_m_s * channel_area).max(1e-4);
+    let re_cool = coolant_rho * input.coolant_velocity_m_s * d_h / coolant_mu;
+    let h_cool = gnielinski(re_cool, 7.0, d_h, coolant_k, coolant_mu, coolant_rho);
+    let t_sat = water_saturation(input.coolant_pressure_pa);
+
+    // Per-station gas-side properties (static gas temperature, the temperature the
+    // wall actually sees after any film, and the Bartz coefficient).
+    struct GasSide {
+        t_gas: f64,
+        t_drive: f64,
+        h_gas: f64,
+        film_eff: f64,
+    }
+    let gas: Vec<GasSide> = input
+        .stations
+        .iter()
+        .map(|pt| {
+            let ar = area_ratio_at(pt.r);
+            let m = mach_from_area(ar.max(1.0), input.gamma);
+            let t_gas = input.tc_k * temperature_ratio(m, input.gamma);
+            let p_gas = input.pc_pa * pressure_ratio(m, input.gamma);
+            let rho_gas = p_gas / (r_spec * t_gas);
+            let velocity_gas = m * (input.gamma * r_spec * t_gas).sqrt();
+            let (t_drive, film_eff) = film_driving_temp(input, pt.x, t_gas, rho_gas, velocity_gas);
+            // Hot-wall iteration for the Bartz coefficient (uses inlet coolant as a
+            // conservative lower bound while converging the wall temperature guess).
+            let mut t_wall = 800.0;
+            let mut h_gas = 0.0;
+            for _ in 0..4 {
+                let t_film = 0.5 * (t_drive + t_wall);
+                let (mu_gas, cp_gas, pr_gas) = gas_transport(input.gamma, r_spec, t_film);
+                h_gas = bartz(input.gamma, input.pc_pa, input.c_star_m_s, r_t, ar, t_drive, rho_gas, velocity_gas, cp_gas, pr_gas, mu_gas, t_wall);
+                let u = 1.0 / (1.0 / h_gas + input.wall_thickness_m / wall_k + 1.0 / h_cool);
+                let q = u * (t_drive - coolant_inlet_k);
+                t_wall = (t_drive - q / h_gas).max(300.0);
+            }
+            GasSide { t_gas, t_drive, h_gas, film_eff }
+        })
+        .collect();
+
+    // Axial spacing per station (wall area for the coolant energy balance).
+    let n = input.stations.len();
+    let dx: Vec<f64> = (0..n)
+        .map(|i| {
+            let xi = input.stations[i].x;
+            let lo = if i > 0 { input.stations[i - 1].x } else { xi };
+            let hi = if i + 1 < n { input.stations[i + 1].x } else { xi };
+            ((hi - lo) / 2.0).abs().max(1e-6)
+        })
+        .collect();
+
+    // March the coolant from the nozzle exit (coolest gas) toward the throat/injector
+    // — counterflow — accumulating the wall heat it absorbs: dT = q·dA/(ṁ·cp).
+    let mut march: Vec<usize> = (0..n).collect();
+    march.sort_by(|&a, &b| input.stations[b].x.partial_cmp(&input.stations[a].x).unwrap_or(std::cmp::Ordering::Equal));
+    let mut coolant_bulk = vec![coolant_inlet_k; n];
+    let mut t_bulk = coolant_inlet_k;
+    for &i in &march {
+        coolant_bulk[i] = t_bulk;
+        let g = &gas[i];
+        let u = 1.0 / (1.0 / g.h_gas + input.wall_thickness_m / wall_k + 1.0 / h_cool);
+        let q = (u * (g.t_drive - t_bulk)).max(0.0);
+        let d_area = 2.0 * std::f64::consts::PI * input.stations[i].r.max(1e-4) * dx[i];
+        t_bulk += q * d_area / (m_dot_cool * coolant_cp);
+    }
+
+    // Build the station results in contour order, using the marched coolant temps.
+    let mut stations = Vec::with_capacity(n);
     let mut max_wall = f64::NEG_INFINITY;
     let mut min_boil = f64::INFINITY;
-
-    for pt in &input.stations {
-        let ar = area_ratio_at(pt.r);
-        let m = mach_from_area(ar.max(1.0), input.gamma);
-        let t_gas = input.tc_k * temperature_ratio(m, input.gamma);
-        let p_gas = input.pc_pa * pressure_ratio(m, input.gamma);
-        let rho_gas = p_gas / (r_spec * t_gas);
-        let velocity_gas = m * (input.gamma * r_spec * t_gas).sqrt();
-
-        // Optional film cooling reduces the gas temperature the wall sees.
-        let (t_drive, film_eff) = film_driving_temp(input, pt.x, t_gas, rho_gas, velocity_gas);
-
-        // Gas-side coefficient, using film-temperature transport properties.
-        // Iterate a couple of times: guess wall temp → film temp → properties → wall.
-        let mut t_wall = 800.0;
-        let mut h_gas = 0.0;
-        for _ in 0..4 {
-            let t_film = 0.5 * (t_gas + t_wall);
-            let (mu_gas, cp_gas, pr_gas) = gas_transport(input.gamma, r_spec, t_film);
-            h_gas = bartz(
-                input.gamma,
-                input.pc_pa,
-                input.c_star_m_s,
-                r_t,
-                ar,
-                t_gas,
-                rho_gas,
-                velocity_gas,
-                cp_gas,
-                pr_gas,
-                mu_gas,
-                t_wall,
-            );
-            t_wall = wall_temps(h_gas, t_drive, 1.0, wall_k, input.wall_thickness_m).0;
-        }
-
-        // Coolant-side: annular channel hydraulic diameter ≈ 2·gap.
-        let d_h = 2.0 * input.coolant_gap_m;
-        let re = coolant_rho * input.coolant_velocity_m_s * d_h / coolant_mu;
-        let h_cool = gnielinski(re, 7.0, d_h, coolant_k, coolant_mu, coolant_rho);
-
-        // Wall conduction + series heat transfer solve for wall temperatures.
-        let (t_wall, t_cool, q_w) =
-            wall_temps(h_gas, t_drive, h_cool, wall_k, input.wall_thickness_m);
-
-        // Boiling margin (water saturation at coolant pressure).
-        let t_sat = water_saturation(input.coolant_pressure_pa);
-        let boil_margin = t_sat - t_cool;
-
+    for i in 0..n {
+        let pt = &input.stations[i];
+        let g = &gas[i];
+        let t_bulk = coolant_bulk[i];
+        let u = 1.0 / (1.0 / g.h_gas + input.wall_thickness_m / wall_k + 1.0 / h_cool);
+        let q_w = (u * (g.t_drive - t_bulk)).max(0.0);
+        let t_wall = g.t_drive - q_w / g.h_gas;
+        // Coolant-side wall-film temperature is the limiting one for boiling.
+        let t_cool_wall = t_bulk + q_w / h_cool;
+        let boil_margin = t_sat - t_cool_wall;
         max_wall = max_wall.max(t_wall);
         min_boil = min_boil.min(boil_margin);
-
         stations.push(CoolingStation {
             x: pt.x,
             r: pt.r,
-            gas_temp_k: t_gas,
+            gas_temp_k: g.t_gas,
             wall_temp_k: t_wall,
             wall_limit_k: wall_limit,
-            coolant_temp_k: t_cool,
+            coolant_temp_k: t_bulk,
             coolant_pressure_pa: input.coolant_pressure_pa,
             coolant_velocity_m_s: input.coolant_velocity_m_s,
             boiling_margin_k: boil_margin,
-            h_gas,
+            h_gas: g.h_gas,
             heat_flux_w_m2: q_w,
-            film_effectiveness: film_eff,
+            film_effectiveness: g.film_eff,
         });
     }
+
+    // Coolant pressure drop: Blasius turbulent friction over the circuit length.
+    let length = {
+        let xmax = input.stations.iter().map(|s| s.x).fold(f64::NEG_INFINITY, f64::max);
+        let xmin = input.stations.iter().map(|s| s.x).fold(f64::INFINITY, f64::min);
+        (xmax - xmin).abs().max(d_h)
+    };
+    let f_darcy = 0.316 / re_cool.max(1.0).powf(0.25);
+    let coolant_dp = f_darcy * (length / d_h) * 0.5 * coolant_rho * input.coolant_velocity_m_s.powi(2);
 
     Ok(CoolingResult {
         stations,
         max_wall_temp_k: max_wall,
         min_boiling_margin_k: min_boil,
-        coolant_dp_pa: coolant_pressure_drop(input),
+        coolant_dp_pa: coolant_dp,
         wall_material_limit_k: wall_limit,
     })
 }
@@ -291,22 +334,6 @@ fn gnielinski(re: f64, pr: f64, d_h: f64, k: f64, mu: f64, rho: f64) -> f64 {
     let nu = ((f / 8.0) * (re - 1000.0) * pr) / (1.0 + 12.7 * (f / 8.0).sqrt() * (pr.powf(2.0 / 3.0) - 1.0));
     let _ = (mu, rho);
     nu * k / d_h
-}
-
-/// Series heat-transfer solve: q = h_g(T_g−T_wg) = k/t(T_wg−T_wc) = h_c(T_wc−T_c).
-/// Returns `(wall_gas_temp, coolant_temp, heat_flux)`.
-fn wall_temps(h_g: f64, t_gas: f64, h_c: f64, wall_k: f64, wall_t: f64) -> (f64, f64, f64) {
-    // Overall heat-transfer coefficient.
-    let u = 1.0 / (1.0 / h_g + wall_t / wall_k + 1.0 / h_c);
-    let q = u * (t_gas - 350.0); // coolant bulk ~350 K
-    let t_wall_gas = t_gas - q / h_g;
-    let t_cool = 350.0 + q / h_c;
-    (t_wall_gas, t_cool, q)
-}
-
-fn coolant_pressure_drop(_input: &L3Input) -> f64 {
-    // Placeholder: refined in the feed-system/transient tier (L5).
-    30_000.0
 }
 
 /// Water saturation temperature (K) at a pressure via a simple Antoine fit.

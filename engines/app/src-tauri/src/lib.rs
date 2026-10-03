@@ -28,6 +28,7 @@ pub fn run() {
             commands::analysis_study,
             commands::feed_study,
             commands::trade_bundle,
+            commands::issues_report,
             commands::blade_study,
             commands::validation_study,
             commands::control_study,

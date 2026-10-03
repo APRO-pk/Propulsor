@@ -415,6 +415,17 @@ export interface ControlStudyDto {
   summary: string;
 }
 
+export interface IssueDto {
+  severity: "fail" | "warn";
+  area: string;
+  message: string;
+}
+export interface IssuesReportDto {
+  issues: IssueDto[];
+  failed: number;
+  warnings: number;
+}
+
 const TAURI_AVAILABLE = "__TAURI_INTERNALS__" in window;
 
 /** Invoke a Tauri command, or return a browser-dev fallback outside the host. */
@@ -455,6 +466,7 @@ export const feedStudy = (burnTimeS: number, feedType: string) =>
   invoke<FeedStudyDto>("feed_study", { burnTimeS, feedType });
 export const tradeBundle = () => invoke<TradeBundleDto>("trade_bundle");
 export const bladeStudy = (speedRpm: number) => invoke<BladeStudyDto>("blade_study", { speedRpm });
+export const issuesReport = () => invoke<IssuesReportDto>("issues_report");
 
 /**
  * Representative data for running the UI in a plain browser (`vite dev`) without
@@ -493,6 +505,8 @@ function mockCommand<T>(cmd: string, args: Record<string, unknown>): T {
       return mockValidation() as unknown as T;
     case "control_study":
       return mockControl(String(args.feedType ?? "")) as unknown as T;
+    case "issues_report":
+      return mockIssues() as unknown as T;
     default:
       return undefined as unknown as T;
   }
@@ -788,7 +802,8 @@ function mockControl(feedType: string): ControlStudyDto {
   const sample = pval("control.sample_rate_hz", 50);
   const sigmaMs = pval("control.combustion_delay_ms", 1.5);
   const target = pval("control.throttle_target", 0.8);
-  const redlineK = pval("control.turbine_redline_k", 1100);
+  const turbInletK = pval("turbo.turbine_inlet_temp_k", 950);
+  const redlineK = pval("control.turbine_redline_k", turbInletK + 200);
 
   const pcAct = pumpFed ? "Gas-generator throttle valve" : "Main oxidizer valve";
   const mrAct = pumpFed ? "Oxidizer valve" : "Main fuel valve";
@@ -810,7 +825,7 @@ function mockControl(feedType: string): ControlStudyDto {
   }
   actuators.push({ name: "Igniter", function: "on/off", closed_loop: false, note: "start-sequence spark/torch" });
   const redlines: ControlRedlineDto[] = [{ name: "Chamber overpressure", limit: (pc / 1e5) * 1.2, unit: "bar" }];
-  if (pumpFed) redlines.push({ name: "Turbine discharge temperature", limit: redlineK, unit: "K" });
+  if (pumpFed) redlines.push({ name: "Turbine inlet temperature", limit: redlineK, unit: "K" });
 
   // Closed-loop Pc step: PI (IMC) on first-order + dead-time, plant on a fine step.
   const tau = Math.max(tauFill, 1e-4);
@@ -853,12 +868,61 @@ function mockControl(feedType: string): ControlStudyDto {
   if (pcBw > nyq) warnings.push(`Pc-loop bandwidth ${pcBw.toFixed(1)} Hz exceeds ~1/10 of the ${sample.toFixed(0)} Hz sample rate (${nyq.toFixed(1)} Hz) — expect overshoot; raise the sample rate or lower the bandwidth`);
   if (mrBw > nyq) warnings.push(`MR-loop bandwidth ${mrBw.toFixed(1)} Hz exceeds ~1/10 of the ${sample.toFixed(0)} Hz sample rate (${nyq.toFixed(1)} Hz)`);
   if (sigma > 0) { const dbw = 1 / (2 * Math.PI * 5 * sigma); if (pcBw > dbw) warnings.push(`Pc-loop bandwidth ${pcBw.toFixed(1)} Hz is above the combustion-dead-time limit ~${dbw.toFixed(1)} Hz (σ=${sigmaMs.toFixed(1)} ms)`); }
+  if (pumpFed && redlineK <= turbInletK) warnings.push(`Turbine redline ${redlineK.toFixed(0)} K is at/below the nominal turbine-inlet temperature ${turbInletK.toFixed(0)} K — it can never trip; set it above the operating inlet temperature with margin`);
   return {
     architecture, control_law: "PI (proportional-integral)", sample_rate_hz: sample, warnings,
     pc_setpoint_bar: pc / 1e5, mr_setpoint: mr, chamber_fill_time_ms: tauFill * 1e3, combustion_delay_ms: sigmaMs,
     loops, sensors, actuators, redlines, pc_step: step, pc_settling_time_s: settling, pc_overshoot_pct: overshoot,
     summary: `${architecture} | PI @ ${sample.toFixed(0)} Hz | Pc setpt ${(pc / 1e5).toFixed(1)} bar, MR ${mr.toFixed(2)} | τ_fill=${(tauFill * 1e3).toFixed(1)} ms, σ=${sigmaMs.toFixed(1)} ms | Pc settle ${settling.toFixed(2)} s, overshoot ${overshoot.toFixed(1)}%`,
   };
+}
+
+function mockIssues(): IssuesReportDto {
+  const issues: IssueDto[] = [];
+  const add = (severity: "fail" | "warn", area: string, message: string) => issues.push({ severity, area, message });
+  const pc = liveDesign.operating_point.chamber_pressure;
+  const pair = liveDesign.propellant.pair;
+  const vapor = VAPOR_PRESSURE[pair];
+  const selfPress = vapor ? vapor >= 1.25 * pc : false;
+  const isPump = !selfPress && pc > 3.5e6;
+
+  const material = String(liveDesign.materials?.chamber || "OFHC Copper");
+  const method = String(liveDesign.geometry?.cooling_jacket?.cooling_method || "regen");
+  const c = mockCooling(material, method);
+  if (c.regen.max_wall_temp_k > c.regen.wall_material_limit_k)
+    add("fail", "Cooling", `Wall temperature ${c.regen.max_wall_temp_k.toFixed(0)} K exceeds the ${c.selected_material} limit ${c.regen.wall_material_limit_k.toFixed(0)} K (margin ${(c.regen.wall_material_limit_k - c.regen.max_wall_temp_k).toFixed(0)} K)`);
+  if (c.regen.min_boiling_margin_k < 0)
+    add("fail", "Cooling", `Coolant boils — boiling margin ${c.regen.min_boiling_margin_k.toFixed(0)} K`);
+  if (method === "regen") {
+    const mat = MOCK_MATERIALS.find((m) => m.name === material);
+    if (mat && mat.cooling_class !== "Regenerative") add("warn", "Cooling", `${material} is a ${mat.cooling_class}-class material but regenerative cooling is selected`);
+  }
+  if (c.nozzle_extension && !c.nozzle_extension.material_ok)
+    add("fail", "Cooling", `Radiation skirt wall ${c.nozzle_extension.equilibrium_wall_temp_k.toFixed(0)} K exceeds the ${c.nozzle_extension_material} limit ${c.nozzle_extension.material_limit_k.toFixed(0)} K`);
+
+  const a = mockAnalysis();
+  if (a.stress.min_margin < 1) add("fail", "Analysis", `Structural margin ${a.stress.min_margin.toFixed(2)} below 1.0 (peak σ ${(a.stress.max_combined_stress_pa / 1e6).toFixed(0)} MPa)`);
+  if (!a.instability.stable) add("warn", "Analysis", `Combustion-instability risk: ${a.instability.dominant_mode} ${a.instability.dominant_frequency_hz.toFixed(0)} Hz, margin ${a.instability.stability_margin.toFixed(2)}`);
+  for (const f of a.injector.flags) add("warn", "Injector", f);
+
+  if (isPump) {
+    const tp = mockTurbopump(20000);
+    if (!tp.bearing.dn_ok) add("warn", "Turbopumps", `Bearing DN ${(tp.bearing.dn_value / 1e6).toFixed(2)}M exceeds its limit`);
+    if (tp.pump.cavitation_margin_m < 0) add("warn", "Turbopumps", `Pump cavitates — NPSH margin ${tp.pump.cavitation_margin_m.toFixed(1)} m`);
+    if (!tp.shaft.subcritical) add("warn", "Turbopumps", `Shaft runs supercritical (N_cr ${tp.shaft.first_critical_rpm.toFixed(0)} rpm)`);
+    if (tp.gg_cycle.margin < 1) add("warn", "Turbopumps", `Gas-generator cycle under-powered — turbine/pump power ${tp.gg_cycle.margin.toFixed(2)}`);
+    const boreMm = pval("turbo.bearing_bore_mm", 45);
+    const shaftMm = tp.shaft.diameter_m * 1000;
+    if (boreMm > 3 * shaftMm) add("warn", "Turbopumps", `Bearing bore ${boreMm.toFixed(0)} mm is far larger than the ${shaftMm.toFixed(1)} mm shaft — incompatible sizing`);
+    for (const w of mockBlade(20000).warnings) add("warn", "Blades", w);
+    for (const w of mockControl("").warnings) add("warn", "Control", w);
+  }
+
+  if (["GoxKerosene", "GoxGasoline", "GoxEthanol", "GoxMethanol"].includes(pair))
+    add("warn", "Feed System", "Gaseous oxidizer (GOX): the tank is sized as a compressed gas — expect a large bottle volume or a high storage pressure");
+
+  const failed = issues.filter((i) => i.severity === "fail").length;
+  return { issues, failed, warnings: issues.length - failed };
 }
 
 function mockTrade(): TradeBundleDto {
@@ -945,7 +1009,10 @@ function mockFeed(burn: number, feedType: string): FeedStudyDto {
   const reqTank = pc + injDp + lineDp;
   const pumpfedTank = pval("feed.pumpfed_tank_bar", 3.0) * 1e5;
   const tankP = feed === "self-pressurizing" ? vapor ?? reqTank : feed === "pump-fed" ? pumpfedTank : reqTank;
-  const ox = sizeTank("oxidizer", oxMass, oxRho, tankP);
+  // Gaseous oxidizer (GOX): tank density from the ideal-gas law at tank pressure.
+  const isGox = ["GoxKerosene", "GoxGasoline", "GoxEthanol", "GoxMethanol"].includes(pair);
+  const oxRhoEff = isGox ? Math.max((tankP * 0.032) / (8.314462 * 293), 0.1) : oxRho;
+  const ox = sizeTank("oxidizer", oxMass, oxRhoEff, tankP);
   const fu = sizeTank("fuel", fuMass, fuRho, tankP);
   let pressurant = null;
   if (feed === "pressure-fed") {

@@ -603,4 +603,23 @@ mod tests {
         uniq.dedup();
         assert_eq!(tiers.len(), uniq.len(), "duplicate tier caches after re-resolve");
     }
+
+    /// The Isp tiers are *different metrics* (report #17/#18): L1 vacuum is the
+    /// Γ-limit ideal maximum (ε→∞), L2 is the delivered value at a finite ε with
+    /// divergence/BL losses — so the ideal must exceed the delivered.
+    #[test]
+    fn ideal_vacuum_isp_exceeds_delivered() {
+        use engine_core::Tier;
+        let mut d = sizing_l0::krzycki_golden_design();
+        resolve(&mut d).unwrap();
+        let l1: thermo::ThermoResult = payload(&d, Tier::L1).unwrap();
+        let l2: gasdynamics::L2Result = payload(&d, Tier::L2).unwrap();
+        assert!(
+            l1.isp_vacuum_s > l2.isp_s,
+            "ideal-max vacuum Isp {} should exceed delivered Isp {}",
+            l1.isp_vacuum_s,
+            l2.isp_s
+        );
+        assert!((150.0..=320.0).contains(&l2.isp_s), "delivered Isp out of band: {}", l2.isp_s);
+    }
 }

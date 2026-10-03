@@ -32,10 +32,10 @@ export function Dashboard() {
 
   const tiles: [string, string][] = [
     ["Thrust", `${((design?.operating_point.thrust ?? 0) / 1000).toFixed(2)} kN`],
-    ["Isp", `${l0.isp_s.toFixed(0)} s`],
+    ["Isp (SL, ideal)", `${l0.isp_s.toFixed(0)} s`],
     ["Chamber P", `${((design?.operating_point.chamber_pressure ?? 0) / 1e5).toFixed(1)} bar`],
     ["T_c", `${(l1?.tc_k ?? l0.tc_k).toFixed(0)} K`],
-    ["c*", `${l0.c_star_m_s.toFixed(0)} m/s`],
+    ["c* (ideal)", `${l0.c_star_m_s.toFixed(0)} m/s`],
     ["Throat Ø", `${(l0.throat_diameter * 1000).toFixed(1)} mm`],
     ["Exit Ø", `${(l0.exit_diameter * 1000).toFixed(1)} mm`],
     ["Area ratio", l0.area_ratio.toFixed(2)],

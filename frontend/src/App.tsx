@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useEngineStore } from "./store";
 import { downloadText } from "./Cooling";
 import { CommitNumberField } from "./ParamInput";
+import { issuesReport, type IssuesReportDto } from "./api";
 import { CrossSection } from "./CrossSection";
 import { PerfMapChart } from "./PerfMapChart";
 import { EngineViewer } from "./EngineViewer";
@@ -43,6 +44,7 @@ export default function App() {
   const store = useEngineStore();
   const [tab, setTab] = useState<Tab>("design");
   const [si, setSi] = useState(true);
+  const [issues, setIssues] = useState<IssuesReportDto | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -51,6 +53,20 @@ export default function App() {
   }, []);
 
   const { l0, l1, l2, design, perfMap } = store;
+
+  // Collect the consolidated issues/warnings whenever the design resolves.
+  const rev = design?.meta.revision;
+  useEffect(() => {
+    if (!l0) {
+      setIssues(null);
+      return;
+    }
+    let live = true;
+    issuesReport().then((r) => live && setIssues(r)).catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [rev, l0]);
 
   const configured =
     (design?.operating_point.thrust ?? 0) > 0 &&
@@ -320,6 +336,36 @@ export default function App() {
             {store.loading && <p className="muted">Loading…</p>}
             {store.error && <p className="err">IPC error: {store.error}</p>}
 
+            {l0 && issues && issues.issues.length > 0 && (
+              <fieldset className="qt-groupbox" style={{ marginBottom: 12 }}>
+                <legend>
+                  Issues{" "}
+                  {issues.failed > 0 && <span className="qt-badge failed">{issues.failed} failed</span>}{" "}
+                  {issues.warnings > 0 && <span className="qt-badge" style={{ background: "#b7791f", color: "#fff" }}>{issues.warnings} warnings</span>}
+                </legend>
+                <div style={{ maxHeight: 220, overflowY: "auto" }}>
+                  {issues.issues.map((it, i) => (
+                    <div key={i} className="qt-field" style={{ alignItems: "flex-start", gap: 6 }}>
+                      <span
+                        className="qt-badge"
+                        style={{ background: it.severity === "fail" ? "#c23b34" : "#b7791f", color: "#fff", flex: "0 0 auto" }}
+                        title={it.severity === "fail" ? "hard limit violated" : "advisory"}
+                      >
+                        {it.area}
+                      </span>
+                      <span style={{ fontSize: 12 }}>{it.message}</span>
+                    </div>
+                  ))}
+                </div>
+              </fieldset>
+            )}
+            {l0 && issues && issues.issues.length === 0 && (
+              <fieldset className="qt-groupbox" style={{ marginBottom: 12 }}>
+                <legend>Issues</legend>
+                <p className="qt-field" style={{ color: "#2f855a" }}>✓ No failed checks for this design.</p>
+              </fieldset>
+            )}
+
             {l0 && (
               <PropTable
                 title="L0 · Analytical sizing"
@@ -329,8 +375,8 @@ export default function App() {
                   ["Exit dia.", len(l0.exit_diameter)],
                   ["Chamber dia.", len(l0.chamber_diameter)],
                   ["Area ratio Aₑ/Aₜ", l0.area_ratio.toFixed(2)],
-                  ["Isp", `${l0.isp_s.toFixed(0)} s`],
-                  ["c*", `${l0.c_star_m_s.toFixed(0)} m/s`],
+                  ["Isp (sea-level, ideal)", `${l0.isp_s.toFixed(0)} s`],
+                  ["c* (ideal)", `${l0.c_star_m_s.toFixed(0)} m/s`],
                   ["Wall thickness", len(l0.wall_thickness)],
                 ]}
               />
@@ -342,8 +388,8 @@ export default function App() {
                   ["T_c", `${l1.tc_k.toFixed(0)} K`],
                   ["γ", l1.gamma.toFixed(3)],
                   ["MW", `${l1.mean_molecular_weight.toFixed(2)} g/mol`],
-                  ["c*", `${l1.c_star_m_s.toFixed(0)} m/s`],
-                  ["Isp vac", `${l1.isp_vacuum_s.toFixed(0)} s`],
+                  ["c* (equilibrium)", `${l1.c_star_m_s.toFixed(0)} m/s`],
+                  ["Isp (vacuum, ideal max)", `${l1.isp_vacuum_s.toFixed(0)} s`],
                 ]}
               />
             )}
@@ -355,7 +401,7 @@ export default function App() {
                   ["Exit Mach", l2.exit_mach.toFixed(2)],
                   ["Exit dia.", len(l2.exit_diameter_m)],
                   ["Divergence λ", l2.divergence_correction.toFixed(3)],
-                  ["Isp", `${l2.isp_s.toFixed(0)} s`],
+                  ["Isp (delivered, at ε)", `${l2.isp_s.toFixed(0)} s`],
                 ]}
               />
             )}
@@ -370,9 +416,20 @@ export default function App() {
         </div>
         <div className="cell">rev {design?.meta.revision ?? 0}</div>
         <div className="cell">{si ? "SI" : "Imperial"}</div>
-        <div className="cell grow">
+        <div className="cell">
           {solved} tier{solved === 1 ? "" : "s"} solved
         </div>
+        {issues && issues.failed > 0 && (
+          <div className="cell" style={{ color: "#c23b34", fontWeight: 700 }} title="failed design checks">
+            {issues.failed} failed
+          </div>
+        )}
+        {issues && issues.warnings > 0 && (
+          <div className="cell" style={{ color: "#b7791f", fontWeight: 600 }} title="design warnings">
+            {issues.warnings} warning{issues.warnings === 1 ? "" : "s"}
+          </div>
+        )}
+        <div className="cell grow" />
         <div className="cell">{configured ? "design resolved" : "no design — enter requirements"}</div>
       </div>
     </div>
