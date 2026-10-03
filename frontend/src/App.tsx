@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useEngineStore } from "./store";
 import { downloadText } from "./Cooling";
+import { CommitNumberField } from "./ParamInput";
 import { CrossSection } from "./CrossSection";
 import { PerfMapChart } from "./PerfMapChart";
 import { EngineViewer } from "./EngineViewer";
@@ -158,8 +159,9 @@ export default function App() {
               <legend>Operating point</legend>
               <label className="qt-field">
                 <span>Thrust (N)</span>
-                <ThrustField
+                <CommitNumberField
                   value={design?.operating_point.thrust ?? 0}
+                  step={10}
                   onCommit={(n) => store.setThrust(n)}
                 />
               </label>
@@ -374,29 +376,6 @@ export default function App() {
         <div className="cell">{configured ? "design resolved" : "no design — enter requirements"}</div>
       </div>
     </div>
-  );
-}
-
-/** Number field that commits on blur / Enter (not on every keystroke), so a
- *  full re-resolve fires once per edit. Re-syncs when the design changes. */
-function ThrustField({ value, onCommit }: { value: number; onCommit: (n: number) => void }) {
-  const [text, setText] = useState(String(value));
-  useEffect(() => setText(String(value)), [value]);
-  const commit = () => {
-    const n = Number(text);
-    if (Number.isFinite(n) && n !== value) onCommit(n);
-  };
-  return (
-    <input
-      type="number"
-      step={10}
-      value={text}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-      }}
-    />
   );
 }
 

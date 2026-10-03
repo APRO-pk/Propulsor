@@ -43,6 +43,68 @@ export function ParamField({ label, k, def, step = 1, unit, hint }: { label: str
   );
 }
 
+/**
+ * A numeric input that commits on blur / Enter (never per-keystroke), so an
+ * async re-resolve can't revert a half-typed value to its first digit. Re-syncs
+ * to `value` whenever the design changes. Presentational — the caller supplies
+ * `onCommit` and any unit conversion (e.g. bar → Pa).
+ *
+ * `emptyWhenZero` shows a blank field (with `placeholder`) while the value is 0,
+ * and commits 0 when the field is cleared — used for "not yet entered" inputs.
+ */
+export function CommitNumberField({
+  value,
+  onCommit,
+  step = 1,
+  placeholder,
+  emptyWhenZero = false,
+  displayDecimals,
+}: {
+  value: number;
+  onCommit: (n: number) => void;
+  step?: number;
+  placeholder?: string;
+  emptyWhenZero?: boolean;
+  displayDecimals?: number;
+}) {
+  const display =
+    emptyWhenZero && !(value > 0)
+      ? ""
+      : displayDecimals !== undefined
+        ? String(Number(value.toFixed(displayDecimals)))
+        : String(value);
+  const [text, setText] = useState(display);
+  useEffect(() => {
+    setText(display);
+  }, [display]);
+
+  const commit = () => {
+    const t = text.trim();
+    if (t === "") {
+      if (value !== 0) onCommit(0);
+      else setText(display);
+      return;
+    }
+    const n = Number(t);
+    if (!isNaN(n) && n !== value) onCommit(n);
+    else setText(display);
+  };
+
+  return (
+    <input
+      type="number"
+      step={step}
+      placeholder={placeholder}
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+      }}
+    />
+  );
+}
+
 /** A persisted text choice bound to `design.choices["<key>"]`. */
 export function ParamChoice({ label, k, def, options, hint }: { label: string; k: string; def: string; options: string[]; hint?: string }) {
   const design = useEngineStore((s) => s.design);

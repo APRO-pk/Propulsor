@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useEngineStore } from "./store";
 import { designAdvice, coolingStudy, turbopumpStudy, type DesignAdviceDto, type CoolingStudyDto, type TurbopumpStudyDto } from "./api";
 import { downloadText } from "./Cooling";
+import { CommitNumberField } from "./ParamInput";
 
 const STEPS = ["Propellant & mission", "Performance / O·F", "Nozzle & expansion", "Cooling", "Feed & turbomachinery", "Review & export"];
 
@@ -79,15 +80,15 @@ export function DesignWizard() {
             </label>
             <label className="qt-field">
               <span>Thrust (N)</span>
-              <input type="number" step={100} placeholder="e.g. 5000" value={curThrust > 0 ? curThrust : ""} onChange={(e) => store.apply("thrust", Number(e.target.value) || 0)} />
+              <CommitNumberField value={curThrust} step={100} placeholder="e.g. 5000" emptyWhenZero onCommit={(n) => store.apply("thrust", n)} />
             </label>
             <label className="qt-field">
               <span>Chamber pressure (bar)</span>
-              <input type="number" step={1} placeholder="e.g. 20" value={curPcBar > 0 ? Number(curPcBar.toFixed(2)) : ""} onChange={(e) => store.apply("chamber_pressure", (Number(e.target.value) || 0) * 1e5)} />
+              <CommitNumberField value={curPcBar} step={1} placeholder="e.g. 20" emptyWhenZero displayDecimals={2} onCommit={(n) => store.apply("chamber_pressure", n * 1e5)} />
             </label>
             <label className="qt-field">
               <span>Mixture ratio O/F</span>
-              <input type="number" step={0.1} placeholder="e.g. 2.4" value={curOf > 0 ? curOf : ""} onChange={(e) => store.apply("mixture_ratio", Number(e.target.value) || 0)} />
+              <CommitNumberField value={curOf} step={0.1} placeholder="e.g. 2.4" emptyWhenZero onCommit={(n) => store.apply("mixture_ratio", n)} />
             </label>
             <label className="qt-field">
               <span>Target burnout altitude (km)</span>
@@ -114,7 +115,7 @@ export function DesignWizard() {
             <hr style={{ border: "none", borderTop: "1px solid #e2e2e6", margin: "10px 0" }} />
             <label className="qt-field">
               <span>Characteristic length L* (m)</span>
-              <input type="number" step={0.05} value={Number(curLStar.toFixed(2))} onChange={(e) => store.apply("l_star", Number(e.target.value))} />
+              <CommitNumberField value={curLStar} step={0.05} displayDecimals={2} onCommit={(n) => store.apply("l_star", n)} />
             </label>
             <div className="qt-field"><span>Recommended L* for this pair</span><b>{advice ? `${advice.recommended_l_star_m.toFixed(2)} m` : "…"}</b></div>
             <button className="qt-tool" disabled={!advice} onClick={() => advice && store.apply("l_star", Number(advice.recommended_l_star_m.toFixed(2)))}>Use recommended L*</button>
