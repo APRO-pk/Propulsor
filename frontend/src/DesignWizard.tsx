@@ -3,6 +3,7 @@ import { useEngineStore } from "./store";
 import { designAdvice, coolingStudy, turbopumpStudy, type DesignAdviceDto, type CoolingStudyDto, type TurbopumpStudyDto } from "./api";
 import { downloadText } from "./Cooling";
 import { CommitNumberField } from "./ParamInput";
+import { engineProfile } from "./exporters";
 
 const STEPS = ["Propellant & mission", "Performance / O·F", "Nozzle & expansion", "Cooling", "Feed & turbomachinery", "Review & export"];
 
@@ -17,7 +18,7 @@ export function DesignWizard() {
   const [step, setStep] = useState(0);
   const [burnoutKm, setBurnoutKm] = useState(40);
   const [strategy, setStrategy] = useState<"performance" | "separation-safe" | "sea-level">("performance");
-  const [feed, setFeed] = useState<"Pressure-fed" | "Pump-fed">("Pump-fed");
+  const [feed, setFeed] = useState<"Auto" | "Self-pressurizing" | "Pressure-fed" | "Pump-fed">("Pump-fed");
   const [rpm, setRpm] = useState(20000);
 
   const [advice, setAdvice] = useState<DesignAdviceDto | null>(null);
@@ -50,8 +51,13 @@ export function DesignWizard() {
   };
 
   const exportContourCsv = () => {
-    const rows = l2?.stations ?? [];
-    downloadText("nozzle_contour.csv", "x_m,r_m\n" + rows.map((p) => `${p.x.toFixed(6)},${p.r.toFixed(6)}`).join("\n") + "\n");
+    if (!l0) return;
+    // Full injector→exit contour (chamber + converging + nozzle), in mm.
+    const prof = engineProfile(l0, l2);
+    downloadText(
+      "engine_contour.csv",
+      "x_mm,r_mm\n" + prof.map((p) => `${(p.x * 1000).toFixed(3)},${(p.r * 1000).toFixed(3)}`).join("\n") + "\n",
+    );
   };
 
   return (
@@ -200,7 +206,7 @@ export function DesignWizard() {
             <div className="qt-field">
               <span>Feed type</span>
               <span>
-                {(["Pressure-fed", "Pump-fed"] as const).map((f) => (
+                {(["Auto", "Self-pressurizing", "Pressure-fed", "Pump-fed"] as const).map((f) => (
                   <button key={f} className={`qt-tool ${feed === f ? "on" : ""}`} style={{ marginLeft: 6 }} onClick={() => setFeed(f)}>{f}</button>
                 ))}
               </span>
@@ -221,7 +227,9 @@ export function DesignWizard() {
                 <p className="muted">Full sizing on the Turbopumps tab.</p>
               </>
             )}
-            {feed === "Pressure-fed" && <p className="muted">Pressure-fed: no turbomachinery — suited to storable, self-pressurizing propellants (e.g. N₂O/propane).</p>}
+            {feed === "Pressure-fed" && <p className="muted">Pressure-fed: no turbomachinery — a regulated gas pushes the propellants.</p>}
+            {feed === "Self-pressurizing" && <p className="muted">Self-pressurizing: the propellant's own vapor pressure feeds the chamber (e.g. N₂O/propane) — no pressurant or pumps.</p>}
+            {feed === "Auto" && <p className="muted">Auto: the Feed System tab recommends an architecture from the propellant vapor pressure and chamber pressure.</p>}
           </fieldset>
         )}
 
