@@ -36,6 +36,11 @@ pub struct L2Input {
     /// Combustion / c* efficiency (0-1).
     pub c_star_efficiency: f64,
     pub nozzle_type: NozzleType,
+    /// Shifting-equilibrium flow bonus on delivered Isp (1.0 = frozen composition,
+    /// the quasi-1D default; >1 approximates nozzle recombination for equilibrium
+    /// flow). A first-order CEA-style correction, not a full equilibrium expansion.
+    #[doc(hidden)]
+    pub shifting_bonus: f64,
 }
 
 /// L2 result.
@@ -123,7 +128,7 @@ pub fn solve_l2(input: &L2Input) -> L2Result {
     // Apply combustion/c* efficiency.
     let c_star_eff = input.c_star_m_s * input.c_star_efficiency.clamp(0.0, 1.0);
     let cf = cf_ideal * divergence;
-    let isp = c_star_eff * cf / 9.80665 * bl;
+    let isp = c_star_eff * cf / 9.80665 * bl * if input.shifting_bonus > 0.0 { input.shifting_bonus } else { 1.0 };
 
     let stations = match input.nozzle_type {
         NozzleType::Conical => contour::conical_contour(r_t, r_e, input.exit_half_angle_deg, 60),
@@ -165,6 +170,7 @@ mod tests {
             exit_half_angle_deg: 15.0,
             c_star_efficiency: 0.95,
             nozzle_type: NozzleType::Bell,
+            shifting_bonus: 1.0,
         };
         let r = solve_l2(&input);
         assert!((3.0..=5.0).contains(&r.area_ratio), "area ratio = {}", r.area_ratio);

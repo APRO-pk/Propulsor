@@ -2,14 +2,22 @@ import { useEffect, useState } from "react";
 import { useEngineStore } from "./store";
 import { designAdvice, coolingStudy, turbopumpStudy, type DesignAdviceDto, type CoolingStudyDto, type TurbopumpStudyDto } from "./api";
 import { downloadText } from "./Cooling";
-import { CommitNumberField } from "./ParamInput";
+import { CommitNumberField, ParamChoice } from "./ParamInput";
 import { engineProfile } from "./exporters";
+
+// Approximate stoichiometric O/F per pair, for equivalence-ratio / %-fuel input.
+const STOICH_OF: Record<string, number> = {
+  GoxKerosene: 3.4, GoxGasoline: 3.5, GoxEthanol: 2.08, GoxMethanol: 1.5,
+  LoxRp1: 3.4, LoxEthanol: 2.08, LoxMethane: 3.99, LoxHydrogen: 7.94,
+  NitrousPropane: 9.5, NtoMmh: 2.5, NtoUdmh: 3.0, H2o2Kerosene: 7.5,
+};
 
 const STEPS = ["Propellant & mission", "Performance / O·F", "Nozzle & expansion", "Cooling", "Feed & turbomachinery", "Review & export"];
 
 const PAIRS = [
   "GoxKerosene", "GoxGasoline", "GoxEthanol", "GoxMethanol",
-  "LoxRp1", "LoxEthanol", "LoxMethane", "NitrousPropane", "NtoMmh", "NtoUdmh",
+  "LoxRp1", "LoxEthanol", "LoxMethane", "LoxHydrogen",
+  "NitrousPropane", "NtoMmh", "NtoUdmh", "H2o2Kerosene",
 ];
 
 export function DesignWizard() {
@@ -19,6 +27,7 @@ export function DesignWizard() {
   const [burnoutKm, setBurnoutKm] = useState(40);
   const [strategy, setStrategy] = useState<"performance" | "separation-safe" | "sea-level">("performance");
   const [feed, setFeed] = useState<"Auto" | "Self-pressurizing" | "Pressure-fed" | "Pump-fed">("Pump-fed");
+  const [ofMode, setOfMode] = useState<"O/F" | "φ" | "%fuel">("O/F");
   const [rpm, setRpm] = useState(20000);
 
   const [advice, setAdvice] = useState<DesignAdviceDto | null>(null);
@@ -32,6 +41,11 @@ export function DesignWizard() {
   const pair = design?.propellant.pair;
   const pairSet = !!pair && pair !== "Unset";
   const configured = curThrust > 0 && curPcBar > 0 && curOf > 0 && pairSet;
+  // Mixture-ratio input modes: O/F, equivalence ratio φ, or %fuel. The design
+  // always stores O/F; these convert for display/entry using the stoichiometric O/F.
+  const stoich = STOICH_OF[pairSet ? (pair as string) : ""] ?? 3.0;
+  const ofToDisplay = (of: number) => (of <= 0 ? 0 : ofMode === "φ" ? stoich / of : ofMode === "%fuel" ? 100 / (1 + of) : of);
+  const displayToOf = (v: number) => (v <= 0 ? 0 : ofMode === "φ" ? stoich / v : ofMode === "%fuel" ? (100 - v) / v : v);
   const curLStar = design?.geometry?.chamber?.l_star_m ?? 1.0;
   const curKind = design?.geometry?.nozzle?.kind ?? "Bell";
   const curMaterial = design?.materials?.chamber ?? "OFHC Copper";
@@ -93,8 +107,15 @@ export function DesignWizard() {
               <CommitNumberField value={curPcBar} step={1} placeholder="e.g. 20" emptyWhenZero displayDecimals={2} onCommit={(n) => store.apply("chamber_pressure", n * 1e5)} />
             </label>
             <label className="qt-field">
-              <span>Mixture ratio O/F</span>
-              <CommitNumberField value={curOf} step={0.1} placeholder="e.g. 2.4" emptyWhenZero onCommit={(n) => store.apply("mixture_ratio", n)} />
+              <span>
+                Mixture ratio
+                <span style={{ marginLeft: 6 }}>
+                  {(["O/F", "φ", "%fuel"] as const).map((m) => (
+                    <button key={m} type="button" className={`qt-tool ${ofMode === m ? "on" : ""}`} style={{ padding: "0 5px", marginLeft: 2, fontSize: 11 }} onClick={() => setOfMode(m)}>{m}</button>
+                  ))}
+                </span>
+              </span>
+              <CommitNumberField value={+ofToDisplay(curOf).toFixed(3)} step={ofMode === "%fuel" ? 1 : 0.1} placeholder={ofMode === "φ" ? "e.g. 1.0" : ofMode === "%fuel" ? "e.g. 29" : "e.g. 2.4"} emptyWhenZero onCommit={(n) => store.apply("mixture_ratio", +displayToOf(n).toFixed(4))} />
             </label>
             <label className="qt-field">
               <span>Target burnout altitude (km)</span>
@@ -155,6 +176,9 @@ export function DesignWizard() {
               <p className="err">⚠ The max-performance nozzle (ε={advice.expansion.optimal_area_ratio.toFixed(0)}) flow-separates at sea level — use the separation-safe ratio for a lift-off nozzle.</p>
             )}
             <div className="qt-field"><span>Design expansion ratio (solved)</span><b>ε = {curEps.toFixed(1)}</b></div>
+            <hr style={{ border: "none", borderTop: "1px solid #e2e2e6", margin: "10px 0" }} />
+            <ParamChoice label="Nozzle flow model" k="thermo.flow_model" def="equilibrium" options={["equilibrium", "frozen"]} hint="equilibrium (shifting) recombines in the nozzle for a few % more Isp; frozen holds the chamber composition (approximate first-order correction)" />
+            <div className="qt-field"><span>Delivered Isp (solved)</span><b>{l2 ? `${l2.isp_s.toFixed(0)} s` : "—"}</b></div>
           </fieldset>
         )}
 

@@ -50,6 +50,10 @@ pub enum PropellantPair {
     NtoMmh,
     /// Nitrogen tetroxide / UDMH — storable hypergolic.
     NtoUdmh,
+    /// Liquid oxygen / liquid hydrogen — highest Isp, deep cryogenic.
+    LoxHydrogen,
+    /// High-test hydrogen peroxide / kerosene — storable, non-toxic.
+    H2o2Kerosene,
 }
 
 impl PropellantPair {
@@ -66,6 +70,8 @@ impl PropellantPair {
             PropellantPair::NitrousPropane => "N2O / Propane",
             PropellantPair::NtoMmh => "NTO / MMH",
             PropellantPair::NtoUdmh => "NTO / UDMH",
+            PropellantPair::LoxHydrogen => "LOX / LH2",
+            PropellantPair::H2o2Kerosene => "H2O2 / Kerosene",
         }
     }
 
@@ -82,6 +88,8 @@ impl PropellantPair {
             "NitrousPropane" => PropellantPair::NitrousPropane,
             "NtoMmh" => PropellantPair::NtoMmh,
             "NtoUdmh" => PropellantPair::NtoUdmh,
+            "LoxHydrogen" => PropellantPair::LoxHydrogen,
+            "H2o2Kerosene" => PropellantPair::H2o2Kerosene,
             "" | "Unset" => PropellantPair::Unset,
             _ => return None,
         })

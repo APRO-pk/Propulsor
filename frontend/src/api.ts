@@ -539,6 +539,8 @@ const MOCK_PROPS: Record<string, MockProp> = {
   NitrousPropane: { gamma: 1.2, r: 349.72, tc: 3200, ispSea: 250, ofOpt: 6.5,  lStar: 1.1 },
   NtoMmh:         { gamma: 1.2, r: 349.72, tc: 3300, ispSea: 285, ofOpt: 2.0,  lStar: 0.75 },
   NtoUdmh:        { gamma: 1.2, r: 349.72, tc: 3350, ispSea: 285, ofOpt: 2.6,  lStar: 0.75 },
+  LoxHydrogen:    { gamma: 1.26, r: 640.0, tc: 3400, ispSea: 380, ofOpt: 5.5,  lStar: 0.7 },
+  H2o2Kerosene:   { gamma: 1.21, r: 330.0, tc: 2900, ispSea: 265, ofOpt: 7.0,  lStar: 1.3 },
 };
 const DEFAULT_PROP: MockProp = MOCK_PROPS.GoxKerosene;
 function mockProps(): MockProp {
@@ -984,6 +986,7 @@ const COMPONENT_DENSITY: Record<string, [number, number]> = {
   GoxKerosene: [1140, 810], LoxRp1: [1140, 810], GoxGasoline: [1140, 740],
   GoxEthanol: [1140, 789], LoxEthanol: [1140, 789], GoxMethanol: [1140, 792],
   LoxMethane: [1140, 423], NitrousPropane: [745, 493], NtoMmh: [1443, 874], NtoUdmh: [1443, 793],
+  LoxHydrogen: [1140, 71], H2o2Kerosene: [1390, 810],
 };
 const VAPOR_PRESSURE: Record<string, number> = { NitrousPropane: 5.1e6 };
 
@@ -1308,6 +1311,8 @@ function mockResolve() {
   const pe = pc * Math.pow(1 + ((gam - 1) / 2) * me * me, -gam / (gam - 1));
   const cfVac = Math.sqrt(((2 * gam * gam) / (gam - 1)) * Math.pow(2 / (gam + 1), (gam + 1) / (gam - 1)) * (1 - Math.pow(pe / pc, (gam - 1) / gam))) + (eps * pe) / pc;
   const effScale = liveCStarEff / 0.95;
+  // Equilibrium (shifting) flow gains a few % Isp over frozen (mirrors the Rust l2_input).
+  const flowBonus = pchoice("thermo.flow_model", "equilibrium") === "frozen" ? 1 : 1 + 0.035 * Math.min(1.3, Math.max(0, (props.tc - 2500) / 1200));
   const l1: L1ResultDto = {
     tc_k: props.tc, gamma: gam, mean_molecular_weight: mw, c_star_m_s: cstar, isp_vacuum_s: props.ispSea + 40,
     species_mol: [["CO2", 0.19], ["H2O", 0.31], ["CO", 0.22], ["OH", 0.05], ["H2", 0.09], ["O2", 0.04], ["N2", 0.1]],
@@ -1316,7 +1321,7 @@ function mockResolve() {
     area_ratio: eps, exit_mach: me, exit_pressure_pa: Math.max(1000, pe),
     exit_temperature_k: props.tc / (1 + ((gam - 1) / 2) * me * me), exit_diameter_m: exitD, throat_diameter_m: throatD,
     divergence_correction: kind === "Bell" ? 0.5 * (1 + Math.cos((thetaE * Math.PI) / 180)) : 0.983, boundary_layer_correction: 0.985,
-    isp_s: (cstar * cfVac / g0) * effScale, c_star_m_s: cstar * effScale, stations,
+    isp_s: (cstar * cfVac / g0) * effScale * flowBonus, c_star_m_s: cstar * effScale, stations,
     bell_theta_n_deg: kind === "Bell" ? thetaN : 0, bell_theta_e_deg: kind === "Bell" ? thetaE : 0,
   };
   d.caches = [

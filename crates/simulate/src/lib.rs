@@ -185,6 +185,14 @@ fn l2_input(design: &EngineDesign) -> Result<gasdynamics::L2Input, EngineError> 
     let l1: thermo::ThermoResult = serde_json::from_value(l1.clone())
         .map_err(|e| EngineError::Internal(e.to_string()))?;
 
+    // Flow model: "frozen" (quasi-1D default) or "equilibrium" (shifting), which
+    // recombines in the nozzle and gains a few percent Isp — larger for hotter,
+    // more-dissociated gas. First-order correction, not a full equilibrium expansion.
+    let shifting_bonus = match design.choice("thermo.flow_model", "equilibrium").as_str() {
+        "frozen" => 1.0,
+        _ => 1.0 + 0.035 * ((l1.tc_k - 2500.0) / 1200.0).clamp(0.0, 1.3),
+    };
+
     Ok(gasdynamics::L2Input {
         gamma: l1.gamma,
         c_star_m_s: l1.c_star_m_s,
@@ -200,6 +208,7 @@ fn l2_input(design: &EngineDesign) -> Result<gasdynamics::L2Input, EngineError> 
             Some(engine_core::NozzleKind::Conical) => gasdynamics::NozzleType::Conical,
             _ => gasdynamics::NozzleType::Bell,
         },
+        shifting_bonus,
     })
 }
 
@@ -363,6 +372,7 @@ pub fn steady_state_map(
                 exit_half_angle_deg: 15.0,
                 c_star_efficiency: design.operating_point.c_star_efficiency,
                 nozzle_type: gasdynamics::NozzleType::Bell,
+                shifting_bonus: 1.0,
             });
             let isp = r2.isp_s;
             isp_row.push(isp);
@@ -417,6 +427,7 @@ pub fn optimal_expansion(
             exit_half_angle_deg: 15.0,
             c_star_efficiency: design.operating_point.c_star_efficiency,
             nozzle_type: gasdynamics::NozzleType::Bell,
+            shifting_bonus: 1.0,
         });
         if l2.isp_s > best.2 {
             best = (ar, l2.exit_pressure_pa, l2.isp_s);

@@ -814,6 +814,8 @@ pub fn component_densities(pair: engine_core::PropellantPair) -> (f64, f64) {
         P::NitrousPropane => (745.0, 493.0),
         P::NtoMmh => (1443.0, 874.0),
         P::NtoUdmh => (1443.0, 793.0),
+        P::LoxHydrogen => (1140.0, 71.0),
+        P::H2o2Kerosene => (1390.0, 810.0),
     }
 }
 

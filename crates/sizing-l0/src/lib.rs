@@ -221,6 +221,9 @@ pub fn recommended_l_star(pair: engine_core::PropellantPair) -> f64 {
         engine_core::PropellantPair::NitrousPropane => 1.1,
         // Hypergolics ignite instantly and burn fast — a short chamber suffices.
         engine_core::PropellantPair::NtoMmh | engine_core::PropellantPair::NtoUdmh => 0.75,
+        // Hydrogen reacts very fast → short chamber; peroxide/kerosene needs more.
+        engine_core::PropellantPair::LoxHydrogen => 0.7,
+        engine_core::PropellantPair::H2o2Kerosene => 1.3,
     }
 }
 

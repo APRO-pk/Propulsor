@@ -38,7 +38,7 @@ pub fn seeded_pairs() -> &'static [PropellantProps] {
     &SEEDED
 }
 
-static SEEDED: [PropellantProps; 10] = [
+static SEEDED: [PropellantProps; 12] = [
     PropellantProps {
         pair: PropellantPair::GoxKerosene,
         density_kg_m3: Some(1_000.0),
@@ -161,6 +161,32 @@ static SEEDED: [PropellantProps; 10] = [
         vapor_pressure_pa: None,
         of_window: (Ratio::new(2.2), Ratio::new(3.0)),
         note: "Storable hypergolic; Proton/Titan class. Toxic.",
+    },
+    PropellantProps {
+        pair: PropellantPair::LoxHydrogen,
+        // Cryogenic, stored separately.
+        density_kg_m3: None,
+        // Hydrogen-rich exhaust: low mean MW (~13 g/mol) → high R and c*.
+        gamma: 1.26,
+        r_si: 640.0,
+        tc_k: 3_400.0,
+        isp_s: 380.0,
+        handling_class: "O/F",
+        vapor_pressure_pa: None,
+        of_window: (Ratio::new(3.5), Ratio::new(6.5)),
+        note: "LOX/LH2: highest Isp; deep-cryogenic, bulky hydrogen (RS-25/RL10 class).",
+    },
+    PropellantProps {
+        pair: PropellantPair::H2o2Kerosene,
+        density_kg_m3: None,
+        gamma: 1.21,
+        r_si: 330.0,
+        tc_k: 2_900.0,
+        isp_s: 265.0,
+        handling_class: "O/F",
+        vapor_pressure_pa: None,
+        of_window: (Ratio::new(6.0), Ratio::new(8.0)),
+        note: "High-test peroxide / kerosene: storable, non-toxic, catalytically decomposed.",
     },
 ];
 

@@ -33,11 +33,18 @@ pub fn fuel_for(pair: PropellantPair) -> Fuel {
             atoms: [8, 18, 0, 0],
             d_hf: -259_280.0,
         },
-        PropellantPair::LoxRp1 => Fuel {
+        PropellantPair::LoxRp1 | PropellantPair::H2o2Kerosene => Fuel {
             name: "kerosene",
             mw: 167.31,
             atoms: [12, 23, 0, 0],
             d_hf: -290_000.0,
+        },
+        // Liquid hydrogen: diatomic H2, zero heat of formation.
+        PropellantPair::LoxHydrogen => Fuel {
+            name: "hydrogen",
+            mw: 2.016,
+            atoms: [0, 2, 0, 0],
+            d_hf: 0.0,
         },
         PropellantPair::GoxEthanol | PropellantPair::LoxEthanol => Fuel {
             name: "ethanol",
@@ -107,6 +114,13 @@ pub fn oxidizer_for(pair: PropellantPair) -> Oxidizer {
             mw: 92.011,
             atoms: [0, 0, 4, 2],
             d_hf: 9_160.0,
+        },
+        // Hydrogen peroxide H₂O₂: 2 H + 2 O per molecule; decomposes exothermically.
+        PropellantPair::H2o2Kerosene => Oxidizer {
+            name: "H2O2",
+            mw: 34.0147,
+            atoms: [0, 2, 2, 0],
+            d_hf: -187_800.0,
         },
         // Everything else is molecular oxygen (GOX/LOX), Δh_f = 0.
         _ => Oxidizer {
