@@ -63,6 +63,9 @@ export default function App() {
     }
     let live = true;
     issuesReport().then((r) => live && setIssues(r)).catch(() => {});
+    // Refresh the performance map for the current design (it was only loaded once
+    // at mount, against the blank starting design).
+    store.loadPerfMap();
     return () => {
       live = false;
     };

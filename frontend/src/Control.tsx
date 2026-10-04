@@ -54,26 +54,26 @@ export function Control() {
         </div>
       </fieldset>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
-        <fieldset className="qt-groupbox">
-          <legend>Control loop diagram</legend>
-          <LoopDiagram study={study} />
-          <table className="qt-proptable" style={{ marginTop: 8 }}>
-            <thead><tr><th>Loop</th><th>Var</th><th>Speed</th><th>Bandwidth</th><th>Setpoint</th><th>Actuator</th></tr></thead>
-            <tbody>
-              {study.loops.map((l) => (
-                <tr key={l.name}>
-                  <td>{l.name}</td><td>{l.variable}</td>
-                  <td>{l.speed === "fast" ? "fast ⚡" : "slow"}</td>
-                  <td className="val">{l.bandwidth_hz.toFixed(1)} Hz</td>
-                  <td className="val">{l.setpoint.toFixed(2)} {l.unit}</td>
-                  <td>{l.actuator}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </fieldset>
+      <fieldset className="qt-groupbox">
+        <legend>Control loop diagram</legend>
+        <LoopDiagram study={study} />
+        <table className="qt-proptable" style={{ marginTop: 8 }}>
+          <thead><tr><th>Loop</th><th>Var</th><th>Speed</th><th>Bandwidth</th><th>Setpoint</th><th>Actuator</th></tr></thead>
+          <tbody>
+            {study.loops.map((l) => (
+              <tr key={l.name}>
+                <td>{l.name}</td><td>{l.variable}</td>
+                <td>{l.speed === "fast" ? "fast ⚡" : "slow"}</td>
+                <td className="val">{l.bandwidth_hz.toFixed(1)} Hz</td>
+                <td className="val">{l.setpoint.toFixed(2)} {l.unit}</td>
+                <td>{l.actuator}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </fieldset>
 
+      <div>
         <fieldset className="qt-groupbox">
           <legend>Closed-loop throttle step — Pc (settle {study.pc_settling_time_s.toFixed(2)} s, overshoot {study.pc_overshoot_pct.toFixed(1)}%)</legend>
           <ResponsiveContainer width="100%" height={240}>

@@ -1,21 +1,31 @@
 import { useEffect, useState } from "react";
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { tradeBundle, type TradeBundleDto } from "./api";
+import { useEngineStore } from "./store";
 
 const AXIS = { fill: "#6b7280", fontSize: 12 } as const;
 const TT = { background: "#fff", border: "1px solid #b9bcc4", borderRadius: 4, fontSize: 12 } as const;
+const CUR = "#c47b12"; // current-design marker colour
 
 export function Trades() {
   const [t, setT] = useState<TradeBundleDto | null>(null);
+  const design = useEngineStore((s) => s.design);
+  const l2 = useEngineStore((s) => s.l2);
+  const rev = design?.meta.revision;
   useEffect(() => {
     let live = true;
     tradeBundle().then((r) => live && setT(r)).catch(() => {});
     return () => {
       live = false;
     };
-  }, []);
+  }, [rev]);
 
   if (!t) return <p className="muted">Running trade studies…</p>;
+
+  // Current design's position on each sweep, to mark alongside the optimum.
+  const curOf = design?.operating_point.mixture_ratio ?? 0;
+  const curEps = l2?.area_ratio ?? 0;
+  const curLStar = design?.geometry?.chamber?.l_star_m ?? 0;
 
   return (
     <div>
@@ -29,6 +39,7 @@ export function Trades() {
               <YAxis stroke="#6b7280" tick={AXIS} domain={["auto", "auto"]} label={{ value: "Isp vac (s)", angle: -90, position: "insideLeft", fill: "#6b7280" }} />
               <Tooltip contentStyle={TT} />
               <ReferenceLine x={t.optimal_of} stroke="#2f8f46" strokeDasharray="4 3" label={{ value: "opt", fill: "#2f8f46", fontSize: 11 }} />
+              {curOf > 0 && <ReferenceLine x={+curOf.toFixed(2)} stroke={CUR} label={{ value: "current", fill: CUR, fontSize: 11 }} />}
               <Line type="monotone" dataKey="isp_vac_s" stroke="#3574e0" dot={false} strokeWidth={2} />
             </LineChart>
           </ResponsiveContainer>
@@ -37,28 +48,31 @@ export function Trades() {
         <fieldset className="qt-groupbox">
           <legend>Expansion sweep → thrust coefficient (opt ε {t.optimal_area_ratio.toFixed(0)})</legend>
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={t.expansion_sweep} margin={{ top: 6, right: 14, bottom: 4, left: 0 }}>
+            <LineChart data={t.expansion_sweep.map((p) => ({ ...p, cf_sea_level: Math.max(0, p.cf_sea_level) }))} margin={{ top: 6, right: 14, bottom: 4, left: 0 }}>
               <CartesianGrid stroke="#dcdce2" strokeDasharray="3 3" />
               <XAxis dataKey="area_ratio" stroke="#6b7280" tick={AXIS} scale="log" domain={["auto", "auto"]} label={{ value: "area ratio ε", position: "insideBottom", offset: -3, fill: "#6b7280" }} />
-              <YAxis stroke="#6b7280" tick={AXIS} label={{ value: "Cf", angle: -90, position: "insideLeft", fill: "#6b7280" }} />
+              <YAxis stroke="#6b7280" tick={AXIS} domain={[0, "auto"]} label={{ value: "Cf", angle: -90, position: "insideLeft", fill: "#6b7280" }} />
               <Tooltip contentStyle={TT} />
-              <ReferenceLine x={t.optimal_area_ratio} stroke="#2f8f46" strokeDasharray="4 3" />
+              <ReferenceLine x={t.optimal_area_ratio} stroke="#2f8f46" strokeDasharray="4 3" label={{ value: "traj. opt", fill: "#2f8f46", fontSize: 11 }} />
+              {curEps > 0 && <ReferenceLine x={+curEps.toFixed(1)} stroke={CUR} label={{ value: "current", fill: CUR, fontSize: 11 }} />}
               <Line type="monotone" dataKey="cf_vacuum" name="vacuum" stroke="#c23b34" dot={false} strokeWidth={2} />
               <Line type="monotone" dataKey="cf_sea_level" name="sea level" stroke="#3574e0" dot={false} strokeWidth={2} />
             </LineChart>
           </ResponsiveContainer>
+          <p className="qt-caption">Sea-level Cf is floored at 0: a real over-expanded nozzle flow-separates rather than producing negative thrust. "traj. opt" is the trajectory-averaged optimum, not the sea-level peak.</p>
         </fieldset>
       </div>
 
       <fieldset className="qt-groupbox">
         <legend>L* sweep → chamber length (recommended {t.recommended_l_star_m.toFixed(2)} m)</legend>
         <ResponsiveContainer width="100%" height={190}>
-          <LineChart data={t.l_star_sweep.map((p) => ({ ...p, len_mm: p.chamber_length_m * 1000 }))} margin={{ top: 6, right: 14, bottom: 4, left: 0 }}>
+          <LineChart data={t.l_star_sweep.map((p) => ({ ...p, len_mm: p.chamber_length_m * 1000 }))} margin={{ top: 6, right: 14, bottom: 4, left: 18 }}>
             <CartesianGrid stroke="#dcdce2" strokeDasharray="3 3" />
             <XAxis dataKey="l_star_m" stroke="#6b7280" tick={AXIS} label={{ value: "L* (m)", position: "insideBottom", offset: -3, fill: "#6b7280" }} />
-            <YAxis stroke="#6b7280" tick={AXIS} label={{ value: "chamber length (mm)", angle: -90, position: "insideLeft", fill: "#6b7280" }} />
+            <YAxis stroke="#6b7280" tick={AXIS} width={70} label={{ value: "chamber L (mm)", angle: -90, position: "insideLeft", fill: "#6b7280" }} />
             <Tooltip contentStyle={TT} />
             <ReferenceLine x={t.recommended_l_star_m} stroke="#2f8f46" strokeDasharray="4 3" label={{ value: "rec", fill: "#2f8f46", fontSize: 11 }} />
+            {curLStar > 0 && <ReferenceLine x={+curLStar.toFixed(2)} stroke={CUR} label={{ value: "current", fill: CUR, fontSize: 11 }} />}
             <Line type="monotone" dataKey="len_mm" stroke="#7a5bd0" dot={false} strokeWidth={2} />
           </LineChart>
         </ResponsiveContainer>

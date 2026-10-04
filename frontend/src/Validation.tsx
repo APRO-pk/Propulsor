@@ -130,8 +130,9 @@ export function Validation() {
     base.sensors.map((s) => `${s.id},${s.predicted.toFixed(2)},${s.predicted.toFixed(2)},${s.kind},${s.unit}`).join("\n") + "\n";
   const transientTemplate = () =>
     "t_s,measured_thrust_n,measured_pc_pa,predicted_thrust_ref,predicted_pc_ref\n" +
-    "# fill measured columns with logged telemetry; t in seconds\n" +
-    base.time_series.map((s) => `${s.t_s.toFixed(3)},${s.predicted_thrust_n.toFixed(1)},${s.predicted_pc_pa.toFixed(0)},${s.predicted_thrust_n.toFixed(1)},${s.predicted_pc_pa.toFixed(0)}`).join("\n") + "\n";
+    "# fill measured columns with logged telemetry; t in seconds.\n" +
+    "# as shipped, measured = predicted at full precision, so an unedited import reads 0.00%.\n" +
+    base.time_series.map((s) => `${s.t_s},${s.predicted_thrust_n},${s.predicted_pc_pa},${s.predicted_thrust_n.toFixed(1)},${s.predicted_pc_pa.toFixed(0)}`).join("\n") + "\n";
 
   const imported = !v.synthetic_reference;
   const pressure = v.sensors.filter((s) => s.kind === "pressure").sort((a, b) => a.x_m - b.x_m);
@@ -145,8 +146,9 @@ export function Validation() {
           <div className="qt-field" style={{ minWidth: 200 }}><span>Spatial residual (RMS)</span><span className={`qt-badge ${v.rms_spatial_pct < 5 ? "solved" : "failed"}`}>{v.rms_spatial_pct.toFixed(2)}%</span></div>
           <div className="qt-field" style={{ minWidth: 200 }}><span>Startup thrust residual (RMS)</span><span className={`qt-badge ${v.rms_thrust_pct < 8 ? "solved" : "failed"}`}>{v.rms_thrust_pct.toFixed(2)}%</span></div>
           <div className="qt-field" style={{ minWidth: 180 }}><span>Ignition / rise</span><b>{(v.ignition_delay_s * 1000).toFixed(0)} / {(v.rise_time_s * 1000).toFixed(0)} ms</b></div>
-          <div className="qt-field" style={{ minWidth: 160 }}><span>Data source</span><span className={`qt-badge ${imported ? "solved" : ""}`}>{imported ? "imported telemetry" : "synthetic reference"}</span></div>
+          <div className="qt-field" style={{ minWidth: 160 }}><span>Data source</span><span className={`qt-badge ${imported ? "solved" : ""}`} style={imported ? undefined : { background: "#b7791f", color: "#fff" }}>{imported ? "imported telemetry" : "synthetic reference"}</span></div>
         </div>
+        <p className="qt-caption" style={{ marginTop: 4 }}>Pass thresholds: spatial RMS &lt; 5%, startup thrust RMS &lt; 8%, per-sensor residual &lt; 4% (green/red bands use these limits).</p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
           <input ref={sensorFileRef} type="file" accept=".csv,text/csv" hidden onChange={(e) => e.target.files?.[0] && readFile(e.target.files[0], "sensor")} />
           <input ref={transientFileRef} type="file" accept=".csv,text/csv" hidden onChange={(e) => e.target.files?.[0] && readFile(e.target.files[0], "transient")} />
@@ -224,7 +226,7 @@ export function Validation() {
               <tr key={s.id}>
                 <td>{s.id}</td>
                 <td>{s.kind}</td>
-                <td className="val">{(s.x_m * 1000).toFixed(0)}</td>
+                <td className="val">{(s.x_m * 1000).toFixed(1)}</td>
                 <td className="val">{fmt(s.predicted, s.unit)}</td>
                 <td className="val">{fmt(s.measured, s.unit)}</td>
                 <td className="val" style={{ color: Math.abs(s.residual_pct) > 4 ? "#c23b34" : "#2f8f46" }}>{s.residual_pct >= 0 ? "+" : ""}{s.residual_pct.toFixed(2)}%</td>

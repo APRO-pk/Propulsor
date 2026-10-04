@@ -21,7 +21,7 @@ export function Analysis() {
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
       <fieldset className="qt-groupbox" style={{ gridColumn: "1 / 3" }}>
         <legend>Injector design inputs<span style={{ float: "right" }}><ResetParams prefix="injector." /></span></legend>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "0 16px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "0 16px" }}>
           <ParamChoice label="Element type" k="injector.element_type" def="UnlikeDoublet" options={["UnlikeDoublet", "LikeDoublet", "Coaxial"]} />
           <ParamField label="Element count" k="injector.element_count" def={24} step={1} />
           <ParamField label="ΔP (frac of Pc)" k="injector.dp_fraction" def={0.2} step={0.01} hint="0.15–0.3 typical; higher ΔP = more stable" />
