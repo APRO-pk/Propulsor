@@ -52,6 +52,18 @@ export default function App() {
     store.loadPerfMap();
   }, []);
 
+  // Undo/redo keyboard shortcuts (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl+Y).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) { e.preventDefault(); void useEngineStore.getState().undo(); }
+      else if ((k === "z" && e.shiftKey) || k === "y") { e.preventDefault(); void useEngineStore.getState().redo(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const { l0, l1, l2, design, perfMap } = store;
 
   // Collect the consolidated issues/warnings whenever the design resolves.
@@ -119,6 +131,12 @@ export default function App() {
         <div className="qt-menu" title="Open a saved design" onClick={() => fileRef.current?.click()}>
           Open
         </div>
+        <div className={`qt-menu ${store.undoStack.length === 0 ? "disabled" : ""}`} title="Undo the last change (Ctrl+Z)" onClick={() => store.undoStack.length && store.undo()}>
+          Undo
+        </div>
+        <div className={`qt-menu ${store.redoStack.length === 0 ? "disabled" : ""}`} title="Redo (Ctrl+Shift+Z)" onClick={() => store.redoStack.length && store.redo()}>
+          Redo
+        </div>
         <div className="qt-menu" title="Re-resolve all tiers" onClick={() => store.load()}>
           Solve
         </div>
@@ -153,6 +171,13 @@ export default function App() {
         </button>
         <button className="qt-tool" onClick={saveDesign} disabled={!design} title="Save the design to JSON">
           <span className="ico">💾</span> Save
+        </button>
+        <div className="qt-sep" />
+        <button className="qt-tool" onClick={() => store.undo()} disabled={store.undoStack.length === 0} title="Undo (Ctrl+Z)">
+          <span className="ico">↶</span> Undo
+        </button>
+        <button className="qt-tool" onClick={() => store.redo()} disabled={store.redoStack.length === 0} title="Redo (Ctrl+Shift+Z)">
+          <span className="ico">↷</span> Redo
         </button>
         <div className="qt-sep" />
         <button className="qt-tool" onClick={() => store.load()}>
