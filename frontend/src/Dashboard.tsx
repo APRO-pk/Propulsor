@@ -108,10 +108,15 @@ function StationConditions({ l0, l1, l2, pc }: { l0: L0ResultDto; l1: L1ResultDt
   const pStar = pc_pa * Math.pow(2 / (g + 1), g / (g - 1));
   const me = l2.exit_mach, te = l2.exit_temperature_k, pe = l2.exit_pressure_pa;
 
+  // Enthalpy h = cp·T (J/kg, 0 K datum); entropy relative to the chamber
+  // s − s_c = cp·ln(T/Tc) − R·ln(P/Pc) (≈ 0 — the nozzle expansion is isentropic).
+  const h = (t: number) => (cp * t) / 1e3; // kJ/kg
+  const s = (p: number, t: number) => (cp * Math.log(t / tc) - R * Math.log(p / pc_pa)) / 1e3; // kJ/(kg·K)
+  const cpk = cp / 1e3; // kJ/(kg·K)
   const rows = [
-    { name: "Chamber", M: 0, P: pc_pa, T: tc, d: rho(pc_pa, tc), V: 0, a: sound(tc) },
-    { name: "Throat", M: 1, P: pStar, T: tStar, d: rho(pStar, tStar), V: sound(tStar), a: sound(tStar) },
-    { name: "Exit", M: me, P: pe, T: te, d: rho(pe, te), V: me * sound(te), a: sound(te) },
+    { name: "Chamber", M: 0, P: pc_pa, T: tc, d: rho(pc_pa, tc), V: 0, a: sound(tc), H: h(tc), S: s(pc_pa, tc) },
+    { name: "Throat", M: 1, P: pStar, T: tStar, d: rho(pStar, tStar), V: sound(tStar), a: sound(tStar), H: h(tStar), S: s(pStar, tStar) },
+    { name: "Exit", M: me, P: pe, T: te, d: rho(pe, te), V: me * sound(te), a: sound(te), H: h(te), S: s(pe, te) },
   ];
   const species = [...l1.species_mol].filter(([, x]) => x > 0.0005).sort((a, b) => b[1] - a[1]);
 
@@ -120,7 +125,7 @@ function StationConditions({ l0, l1, l2, pc }: { l0: L0ResultDto; l1: L1ResultDt
       <fieldset className="qt-groupbox">
         <legend>Station conditions (γ = {g.toFixed(3)}, cp = {cp.toFixed(0)} J/kg·K, R = {R.toFixed(0)} J/kg·K)</legend>
         <table className="qt-proptable">
-          <thead><tr><th>Station</th><th>Mach</th><th>P (bar)</th><th>T (K)</th><th>ρ (kg/m³)</th><th>V (m/s)</th><th>a (m/s)</th></tr></thead>
+          <thead><tr><th>Station</th><th>Mach</th><th>P (bar)</th><th>T (K)</th><th>ρ (kg/m³)</th><th>V (m/s)</th><th>a (m/s)</th><th>h (kJ/kg)</th><th>s−s_c (kJ/kg·K)</th><th>Cp (kJ/kg·K)</th><th>γ</th></tr></thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.name}>
@@ -131,11 +136,15 @@ function StationConditions({ l0, l1, l2, pc }: { l0: L0ResultDto; l1: L1ResultDt
                 <td className="val">{r.d.toFixed(3)}</td>
                 <td className="val">{r.V.toFixed(0)}</td>
                 <td className="val">{r.a.toFixed(0)}</td>
+                <td className="val">{r.H.toFixed(0)}</td>
+                <td className="val">{r.S.toFixed(3)}</td>
+                <td className="val">{cpk.toFixed(3)}</td>
+                <td className="val">{g.toFixed(3)}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        <p className="qt-caption" style={{ marginTop: 4 }}>Chamber is stagnation (M≈0); throat is sonic (M=1); exit from the L2 nozzle solve.</p>
+        <p className="qt-caption" style={{ marginTop: 4 }}>Chamber is stagnation (M≈0); throat is sonic (M=1); exit from the L2 nozzle solve. Entropy is relative to the chamber (≈0 — the expansion is isentropic).</p>
       </fieldset>
       <fieldset className="qt-groupbox">
         <legend>Combustion species (mole fraction)</legend>

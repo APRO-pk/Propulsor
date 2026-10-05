@@ -209,20 +209,20 @@ export function DesignWizard() {
               </span>
             </div>
             <hr style={{ border: "none", borderTop: "1px solid #e2e2e6", margin: "8px 0" }} />
-            <label className="qt-field">
+            <label className="qt-field" title="Fuel/oxidizer combination — sets the thermochemistry (Tc, γ, c*)">
               <span>Propellant pair</span>
-              <select value={pairSet ? pair : ""} onChange={(e) => store.apply("propellant_pair", e.target.value)}>
+              <select title="Fuel/oxidizer combination — sets the thermochemistry (Tc, γ, c*)" value={pairSet ? pair : ""} onChange={(e) => store.apply("propellant_pair", e.target.value)}>
                 <option value="">— Select propellant —</option>
                 {PAIRS.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
             </label>
             <label className="qt-field">
               <span>Thrust</span>
-              <UnitNumberField value={curThrust} dim="force" unitKey="thrust" defUnit="N" step={100} placeholder="e.g. 5000" emptyWhenZero min={1} onCommit={(n) => store.apply("thrust", n)} />
+              <UnitNumberField value={curThrust} dim="force" unitKey="thrust" defUnit="N" step={100} placeholder="e.g. 5000" emptyWhenZero min={1} hint="design-point thrust at the chosen expansion condition" onCommit={(n) => store.apply("thrust", n)} />
             </label>
             <label className="qt-field">
               <span>Chamber pressure</span>
-              <UnitNumberField value={design?.operating_point.chamber_pressure ?? 0} dim="pressure" unitKey="chamber_pressure" defUnit="bar" step={1} placeholder="e.g. 20" emptyWhenZero min={1e4} onCommit={(n) => store.apply("chamber_pressure", n)} />
+              <UnitNumberField value={design?.operating_point.chamber_pressure ?? 0} dim="pressure" unitKey="chamber_pressure" defUnit="bar" step={1} placeholder="e.g. 20" emptyWhenZero min={1e4} hint="stagnation (injector-face) chamber pressure Pc" onCommit={(n) => store.apply("chamber_pressure", n)} />
             </label>
             <label className="qt-field">
               <span>
@@ -233,11 +233,11 @@ export function DesignWizard() {
                   ))}
                 </span>
               </span>
-              <CommitNumberField value={+ofToDisplay(curOf).toFixed(3)} step={ofMode === "%fuel" ? 1 : 0.1} placeholder={ofMode === "φ" ? "e.g. 1.0" : ofMode === "%fuel" ? "e.g. 29" : "e.g. 2.4"} emptyWhenZero min={0.01} onCommit={(n) => store.apply("mixture_ratio", +displayToOf(n).toFixed(4))} />
+              <CommitNumberField value={+ofToDisplay(curOf).toFixed(3)} step={ofMode === "%fuel" ? 1 : 0.1} placeholder={ofMode === "φ" ? "e.g. 1.0" : ofMode === "%fuel" ? "e.g. 29" : "e.g. 2.4"} emptyWhenZero min={0.01} hint="oxidizer/fuel mass ratio (or φ / %fuel per the toggle)" onCommit={(n) => store.apply("mixture_ratio", +displayToOf(n).toFixed(4))} />
             </label>
-            <label className="qt-field">
+            <label className="qt-field" title="mission burnout altitude — drives the recommended expansion ratio">
               <span>Target burnout altitude (km)</span>
-              <input type="number" step={5} value={burnoutKm} onChange={(e) => setBurnoutKm(Number(e.target.value))} />
+              <input type="number" step={5} title="mission burnout altitude — drives the recommended expansion ratio" value={burnoutKm} onChange={(e) => setBurnoutKm(Number(e.target.value))} />
             </label>
             {pairSet && (
               <>
@@ -271,7 +271,7 @@ export function DesignWizard() {
             <hr style={{ border: "none", borderTop: "1px solid #e2e2e6", margin: "10px 0" }} />
             <label className="qt-field">
               <span>Characteristic length L*</span>
-              <UnitNumberField value={curLStar} dim="length" unitKey="l_star" defUnit="m" step={0.05} min={0.05} max={5} onCommit={(n) => store.apply("l_star", n)} />
+              <UnitNumberField value={curLStar} dim="length" unitKey="l_star" defUnit="m" step={0.05} min={0.05} max={5} hint="characteristic chamber length L* = V_chamber / A_throat; sets residence time" onCommit={(n) => store.apply("l_star", n)} />
             </label>
             <div className="qt-field"><span>Recommended L* for this pair</span><b>{advice ? `${advice.recommended_l_star_m.toFixed(2)} m` : "…"}</b></div>
             <button className="qt-tool" disabled={!advice} onClick={() => advice && store.apply("l_star", Number(advice.recommended_l_star_m.toFixed(2)))}>Use recommended L*</button>
@@ -307,7 +307,7 @@ export function DesignWizard() {
             {l2 && (
               <label className="qt-field" title="Perfectly expand to this exit pressure (overrides the strategy above)">
                 <span>Or set exit pressure</span>
-                <UnitNumberField value={l2.exit_pressure_pa} dim="pressure" unitKey="exit_pressure" defUnit="bar" step={0.1} onCommit={(n) => n > 0 && store.apply("exit_pressure_bar", n / 1e5)} />
+                <UnitNumberField value={l2.exit_pressure_pa} dim="pressure" unitKey="exit_pressure" defUnit="bar" step={0.1} hint="nozzle exit pressure for a perfect-expansion design (overrides the strategy)" onCommit={(n) => n > 0 && store.apply("exit_pressure_bar", n / 1e5)} />
               </label>
             )}
             <div className="qt-field"><span>Design expansion ratio (solved)</span><b>ε = {curEps.toFixed(1)}</b></div>
@@ -329,24 +329,24 @@ export function DesignWizard() {
         {step === 3 && (
           <fieldset className="qt-groupbox">
             <legend>Cooling</legend>
-            <label className="qt-field">
+            <label className="qt-field" title="heat-management method: regenerative, film, radiation or ablative">
               <span>Method</span>
-              <select value={curMethod} onChange={(e) => store.apply("cooling_method", e.target.value)}>
+              <select title="heat-management method: regenerative, film, radiation or ablative" value={curMethod} onChange={(e) => store.apply("cooling_method", e.target.value)}>
                 <option value="regen">Regenerative</option>
                 <option value="film">Film</option>
                 <option value="radiation">Radiation</option>
                 <option value="ablative">Ablative</option>
               </select>
             </label>
-            <label className="qt-field">
+            <label className="qt-field" title="chamber wall material — sets conductivity, allowable stress and temperature limit">
               <span>Chamber wall material</span>
-              <select value={curMaterial} onChange={(e) => store.apply("wall_material", e.target.value)}>
+              <select title="chamber wall material — sets conductivity, allowable stress and temperature limit" value={curMaterial} onChange={(e) => store.apply("wall_material", e.target.value)}>
                 {(cool?.materials ?? []).map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
               </select>
             </label>
-            <label className="qt-field">
+            <label className="qt-field" title="optional radiation-cooled nozzle extension in a second material">
               <span>Nozzle-extension material (multi-material)</span>
-              <select value={curNozzleMat} onChange={(e) => store.apply("nozzle_material", e.target.value)}>
+              <select title="optional radiation-cooled nozzle extension in a second material" value={curNozzleMat} onChange={(e) => store.apply("nozzle_material", e.target.value)}>
                 <option value="">(none)</option>
                 {(cool?.materials ?? []).filter((m) => m.cooling_class === "Radiation").map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
               </select>

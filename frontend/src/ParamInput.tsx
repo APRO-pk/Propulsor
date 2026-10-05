@@ -49,18 +49,24 @@ export function ParamField({ label, k, def, step = 1, unit, hint, min, max, dim,
   const toStore = (dispVal: number) => (base && selU ? base.fromSI(selU.toSI(dispVal)) : dispVal);
 
   const [text, setText] = useState(String(toDisplay(value)));
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     setText(String(toDisplay(value)));
+    setErr(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, selLabel]);
 
   const commit = () => {
-    let d = Number(text);
-    if (isNaN(d)) { setText(String(toDisplay(value))); return; }
-    let n = toStore(d);
-    if (min !== undefined && n < min) n = min;
-    if (max !== undefined && n > max) n = max;
+    const t = text.trim();
+    // Bad input is reported, not silently swallowed (report option #19).
+    if (t === "") { setErr("enter a number"); return; }
+    const d = Number(t);
+    if (isNaN(d)) { setErr("enter a number"); return; }
+    const n = toStore(d);
+    if (min !== undefined && n < min - 1e-12) { setErr(`must be ≥ ${Number(toDisplay(min))}`); return; }
+    if (max !== undefined && n > max + 1e-12) { setErr(`must be ≤ ${Number(toDisplay(max))}`); return; }
+    setErr(null);
     if (Math.abs(n - value) > Math.abs(value) * 1e-9 + 1e-12) void apply(k, n);
     else setText(String(toDisplay(value)));
   };
@@ -73,15 +79,20 @@ export function ParamField({ label, k, def, step = 1, unit, hint, min, max, dim,
         {!dim && unit ? ` (${unit})` : ""}
         {isCustom ? <span style={{ color: "#3574e0", marginLeft: 4 }} title="custom value (default shown on reset)">●</span> : null}
       </span>
-      <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
-        <input
-          type="number"
-          step={step}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-        />
+      <span style={{ display: "inline-flex", gap: 4, alignItems: "flex-start" }}>
+        <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+          <input
+            type="number"
+            step={step}
+            value={text}
+            title={hint}
+            style={err ? { borderColor: "#c23b34" } : undefined}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+          />
+          {err && <span style={{ color: "#c23b34", fontSize: 10 }}>{err}</span>}
+        </span>
         {dim && <UnitSelect dim={dim} k={k} def={baseUnit ?? DIMS[dim].base} />}
       </span>
     </label>
@@ -199,6 +210,7 @@ export function CommitNumberField({
   displayDecimals,
   min,
   max,
+  hint,
 }: {
   value: number;
   onCommit: (n: number) => void;
@@ -208,6 +220,7 @@ export function CommitNumberField({
   displayDecimals?: number;
   min?: number;
   max?: number;
+  hint?: string;
 }) {
   const display =
     emptyWhenZero && !(value > 0)
@@ -247,6 +260,7 @@ export function CommitNumberField({
         step={step}
         placeholder={placeholder}
         value={text}
+        title={hint}
         style={err ? { borderColor: "#c23b34" } : undefined}
         onChange={(e) => setText(e.target.value)}
         onBlur={commit}
