@@ -1143,7 +1143,7 @@ function mockAnalysis(): AnalysisStudyDto {
   const l0 = liveDesign.caches.find((c) => c.tier === "L0")?.payload as L0ResultDto | undefined;
   const l2 = liveDesign.caches.find((c) => c.tier === "L2")?.payload as L2ResultDto | undefined;
   const pc = liveDesign.operating_point.chamber_pressure;
-  const mat = MOCK_MATERIALS.find((m) => m.name === liveDesign.materials?.chamber) ?? MOCK_MATERIALS[0];
+  const mat = mockMaterial(String(liveDesign.materials?.chamber || "OFHC Copper"));
   const dpFrac = pval("injector.dp_fraction", 0.2);
   const nElem = Math.round(pval("injector.element_count", 24));
   const cd = pval("injector.discharge_coefficient", 0.7);
@@ -1403,6 +1403,24 @@ const MOCK_MATERIALS: MaterialDto[] = [
   { name: "Carbon-Carbon", thermal_conductivity_w_m_k: 40, max_service_temp_k: 2200, density_kg_m3: 1600, allowable_stress_pa: 100e6, youngs_modulus_pa: 70e9, cte_per_k: 2e-6, emissivity: 0.85, cooling_class: "Radiation" },
 ];
 
+/** Resolve a wall material by name; "Custom" is built from material.custom_* params. */
+function mockMaterial(name: string): MaterialDto {
+  if (name.toLowerCase() === "custom") {
+    return {
+      name: "Custom",
+      thermal_conductivity_w_m_k: Math.max(0.1, pval("material.custom_k", 350)),
+      max_service_temp_k: Math.max(100, pval("material.custom_tmax_k", 800)),
+      density_kg_m3: Math.max(100, pval("material.custom_density", 8000)),
+      allowable_stress_pa: Math.max(1, pval("material.custom_allowable_mpa", 200)) * 1e6,
+      youngs_modulus_pa: Math.max(1, pval("material.custom_youngs_gpa", 120)) * 1e9,
+      cte_per_k: Math.max(0.1, pval("material.custom_cte_ppm", 16)) * 1e-6,
+      emissivity: Math.min(1, Math.max(0.05, pval("material.custom_emissivity", 0.5))),
+      cooling_class: "Regenerative",
+    };
+  }
+  return MOCK_MATERIALS.find((x) => x.name === name) ?? MOCK_MATERIALS[0];
+}
+
 function mockAdvice(burnoutM: number): DesignAdviceDto {
   const highAlt = Math.min(300, 4 + burnoutM / 1500);
   const sep = burnoutM > 20000;
@@ -1458,7 +1476,7 @@ function mockAblative(): { recession_rate_m_s: number; total_recession_m: number
 }
 
 function mockCooling(material: string, method: string): CoolingStudyDto {
-  const m = MOCK_MATERIALS.find((x) => x.name === material) ?? MOCK_MATERIALS[0];
+  const m = mockMaterial(material);
   const extMat = MOCK_MATERIALS.find((x) => x.name === liveDesign.materials?.nozzle);
   const l0 = liveDesign.caches.find((c) => c.tier === "L0")?.payload as L0ResultDto | undefined;
   const l2 = liveDesign.caches.find((c) => c.tier === "L2")?.payload as L2ResultDto | undefined;
@@ -1495,7 +1513,7 @@ function mockCooling(material: string, method: string): CoolingStudyDto {
   });
   const coolantDp = 30000 * (pc / 2e6);
   return {
-    materials: MOCK_MATERIALS,
+    materials: [...MOCK_MATERIALS, mockMaterial("Custom")],
     selected_material: m.name,
     method,
     regen: { max_wall_temp_k: wall, wall_material_limit_k: m.max_service_temp_k, min_boiling_margin_k: boilMargin, coolant_dp_pa: coolantDp, stations },

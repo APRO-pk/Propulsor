@@ -226,12 +226,10 @@ fn l3_input(design: &EngineDesign) -> Result<cooling::L3Input, EngineError> {
         pc_pa: design.operating_point.chamber_pressure.as_si(),
         c_star_m_s: l1.c_star_m_s,
         mw_g_per_mol: l1.mean_molecular_weight,
-        wall_material: design
-            .materials
-            .chamber
-            .as_deref()
-            .and_then(cooling::materials::by_name)
-            .unwrap_or_else(cooling::materials::copper_ofhc),
+        wall_material: design::resolve_material(
+            design,
+            &design.materials.chamber.clone().unwrap_or_else(|| "OFHC Copper".into()),
+        ),
         wall_thickness_m: l0.wall_thickness.as_si(),
         coolant_gap_m: l0.cooling_gap.as_si(),
         // User-settable coolant conditions (persisted cooling.* params).
@@ -249,13 +247,12 @@ fn l4_input(design: &EngineDesign) -> Result<structures::L4Input, EngineError> {
     let wall_temp = l3.max_wall_temp_k;
     let thermal_gradient = (wall_temp - 350.0).max(0.0);
 
-    // Structural properties from the selected chamber material (not copper-pinned).
-    let mat = design
-        .materials
-        .chamber
-        .as_deref()
-        .and_then(cooling::materials::by_name)
-        .unwrap_or_else(cooling::materials::copper_ofhc);
+    // Structural properties from the selected chamber material (not copper-pinned;
+    // honors a user-defined "Custom" material too).
+    let mat = design::resolve_material(
+        design,
+        &design.materials.chamber.clone().unwrap_or_else(|| "OFHC Copper".into()),
+    );
 
     Ok(structures::L4Input {
         chamber_pressure_pa: design.operating_point.chamber_pressure.as_si(),

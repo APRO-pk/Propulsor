@@ -79,6 +79,17 @@ export function Cooling() {
             ))}
           </select>
         </label>
+        {material === "Custom" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px", borderTop: "1px solid var(--qt-border)", borderBottom: "1px solid var(--qt-border)", padding: "4px 0", margin: "4px 0" }}>
+            <ParamField label="Conductivity k" k="material.custom_k" def={350} step={10} unit="W/m·K" />
+            <ParamField label="Max service temp" k="material.custom_tmax_k" def={800} step={25} unit="K" />
+            <ParamField label="Density" k="material.custom_density" def={8000} step={100} unit="kg/m³" />
+            <ParamField label="Allowable stress" k="material.custom_allowable_mpa" def={200} step={10} unit="MPa" />
+            <ParamField label="Young's modulus" k="material.custom_youngs_gpa" def={120} step={5} unit="GPa" />
+            <ParamField label="CTE" k="material.custom_cte_ppm" def={16} step={1} unit="ppm/K" />
+            <ParamField label="Emissivity" k="material.custom_emissivity" def={0.5} step={0.05} />
+          </div>
+        )}
         <label className="qt-field">
           <span>Nozzle-extension material</span>
           <select value={nozzleMat} onChange={(e) => setNozzleMat(e.target.value)}>

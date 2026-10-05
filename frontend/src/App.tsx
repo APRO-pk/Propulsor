@@ -337,7 +337,7 @@ export default function App() {
           <div className="qt-dock-title">Properties</div>
           <div className="qt-dock-body">
             {store.loading && <p className="muted">Loading…</p>}
-            {store.error && <p className="err">IPC error: {store.error}</p>}
+            {store.error && <p className="err">⚠ Input error: {store.error}</p>}
 
             {l0 && issues && issues.issues.length > 0 && (
               <fieldset className="qt-groupbox" style={{ marginBottom: 12 }}>

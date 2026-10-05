@@ -182,11 +182,11 @@ export function DesignWizard() {
             </label>
             <label className="qt-field">
               <span>Thrust (N)</span>
-              <CommitNumberField value={curThrust} step={100} placeholder="e.g. 5000" emptyWhenZero onCommit={(n) => store.apply("thrust", n)} />
+              <CommitNumberField value={curThrust} step={100} placeholder="e.g. 5000" emptyWhenZero min={1} onCommit={(n) => store.apply("thrust", n)} />
             </label>
             <label className="qt-field">
               <span>Chamber pressure (bar)</span>
-              <CommitNumberField value={curPcBar} step={1} placeholder="e.g. 20" emptyWhenZero displayDecimals={2} onCommit={(n) => store.apply("chamber_pressure", n * 1e5)} />
+              <CommitNumberField value={curPcBar} step={1} placeholder="e.g. 20" emptyWhenZero displayDecimals={2} min={0.1} onCommit={(n) => store.apply("chamber_pressure", n * 1e5)} />
             </label>
             <label className="qt-field">
               <span>
@@ -197,7 +197,7 @@ export function DesignWizard() {
                   ))}
                 </span>
               </span>
-              <CommitNumberField value={+ofToDisplay(curOf).toFixed(3)} step={ofMode === "%fuel" ? 1 : 0.1} placeholder={ofMode === "φ" ? "e.g. 1.0" : ofMode === "%fuel" ? "e.g. 29" : "e.g. 2.4"} emptyWhenZero onCommit={(n) => store.apply("mixture_ratio", +displayToOf(n).toFixed(4))} />
+              <CommitNumberField value={+ofToDisplay(curOf).toFixed(3)} step={ofMode === "%fuel" ? 1 : 0.1} placeholder={ofMode === "φ" ? "e.g. 1.0" : ofMode === "%fuel" ? "e.g. 29" : "e.g. 2.4"} emptyWhenZero min={0.01} onCommit={(n) => store.apply("mixture_ratio", +displayToOf(n).toFixed(4))} />
             </label>
             <label className="qt-field">
               <span>Target burnout altitude (km)</span>
@@ -224,7 +224,7 @@ export function DesignWizard() {
             <hr style={{ border: "none", borderTop: "1px solid #e2e2e6", margin: "10px 0" }} />
             <label className="qt-field">
               <span>Characteristic length L* (m)</span>
-              <CommitNumberField value={curLStar} step={0.05} displayDecimals={2} onCommit={(n) => store.apply("l_star", n)} />
+              <CommitNumberField value={curLStar} step={0.05} displayDecimals={2} min={0.05} max={5} onCommit={(n) => store.apply("l_star", n)} />
             </label>
             <div className="qt-field"><span>Recommended L* for this pair</span><b>{advice ? `${advice.recommended_l_star_m.toFixed(2)} m` : "…"}</b></div>
             <button className="qt-tool" disabled={!advice} onClick={() => advice && store.apply("l_star", Number(advice.recommended_l_star_m.toFixed(2)))}>Use recommended L*</button>

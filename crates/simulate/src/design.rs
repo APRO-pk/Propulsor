@@ -79,7 +79,7 @@ pub fn cooling_study(design: &mut EngineDesign, material_name: &str, method: &st
     let l0: sizing_l0::L0Result = payload(design, Tier::L0)?;
     let l1: thermo::ThermoResult = payload(design, Tier::L1)?;
 
-    let material = cooling::materials::by_name(material_name).unwrap_or_else(cooling::materials::copper_ofhc);
+    let material = resolve_material(design, material_name);
 
     // Base regenerative solve on the current contour, with the chosen material and
     // optional wall film.
@@ -213,8 +213,13 @@ pub fn cooling_study(design: &mut EngineDesign, material_name: &str, method: &st
     }
     let print_plan = cooling::printing::build_print_plan(&region_specs);
 
+    // Expose the fixed database plus the current "Custom" material so the UI can
+    // offer it as a selectable option.
+    let mut materials = cooling::materials::all();
+    materials.push(resolve_material(design, "Custom"));
+
     Ok(CoolingStudy {
-        materials: cooling::materials::all(),
+        materials,
         selected_material: material.name.clone(),
         method: method.to_string(),
         regen,
@@ -861,6 +866,27 @@ pub fn collect_issues(design: &mut EngineDesign) -> Result<IssuesReport, EngineE
     Ok(IssuesReport { issues, failed, warnings })
 }
 
+/// Resolve a wall-material name to a [`cooling::materials::Material`]. The name
+/// `"Custom"` builds a material from the user's persisted `material.custom_*`
+/// params, so a design can use a material outside the fixed database (#13).
+pub fn resolve_material(design: &EngineDesign, name: &str) -> cooling::materials::Material {
+    if name.eq_ignore_ascii_case("Custom") {
+        cooling::materials::Material {
+            name: "Custom".into(),
+            thermal_conductivity_w_m_k: design.param("material.custom_k", 350.0).max(0.1),
+            max_service_temp_k: design.param("material.custom_tmax_k", 800.0).max(100.0),
+            density_kg_m3: design.param("material.custom_density", 8000.0).max(100.0),
+            allowable_stress_pa: design.param("material.custom_allowable_mpa", 200.0).max(1.0) * 1e6,
+            youngs_modulus_pa: design.param("material.custom_youngs_gpa", 120.0).max(1.0) * 1e9,
+            cte_per_k: design.param("material.custom_cte_ppm", 16.0).max(0.1) * 1e-6,
+            emissivity: design.param("material.custom_emissivity", 0.5).clamp(0.05, 1.0),
+            cooling_class: cooling::materials::CoolingClass::Regenerative,
+        }
+    } else {
+        cooling::materials::by_name(name).unwrap_or_else(cooling::materials::copper_ofhc)
+    }
+}
+
 /// True when the oxidizer is stored as a gas (GOX pairs), so its tank density
 /// follows the ideal-gas law at the tank pressure rather than a liquid density.
 pub fn oxidizer_is_gaseous(pair: engine_core::PropellantPair) -> bool {
@@ -1149,7 +1175,7 @@ pub fn analysis_study(design: &mut EngineDesign) -> Result<AnalysisStudy, Engine
     });
 
     // Distributed wall-stress field over chamber + nozzle stations.
-    let material = design.materials.chamber.as_deref().and_then(cooling::materials::by_name).unwrap_or_else(cooling::materials::copper_ofhc);
+    let material = resolve_material(design, &design.materials.chamber.clone().unwrap_or_else(|| "OFHC Copper".into()));
     let throat_r = l3.stations.iter().map(|s| s.r).fold(f64::INFINITY, f64::min).max(1e-4);
     let mut stations: Vec<structures::distribution::StressStationInput> = Vec::new();
     // Chamber stations at full chamber pressure.

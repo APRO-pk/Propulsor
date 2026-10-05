@@ -59,6 +59,8 @@ export function CommitNumberField({
   placeholder,
   emptyWhenZero = false,
   displayDecimals,
+  min,
+  max,
 }: {
   value: number;
   onCommit: (n: number) => void;
@@ -66,6 +68,8 @@ export function CommitNumberField({
   placeholder?: string;
   emptyWhenZero?: boolean;
   displayDecimals?: number;
+  min?: number;
+  max?: number;
 }) {
   const display =
     emptyWhenZero && !(value > 0)
@@ -74,34 +78,46 @@ export function CommitNumberField({
         ? String(Number(value.toFixed(displayDecimals)))
         : String(value);
   const [text, setText] = useState(display);
+  const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     setText(display);
+    setErr(null);
   }, [display]);
 
   const commit = () => {
     const t = text.trim();
     if (t === "") {
-      if (value !== 0) onCommit(0);
-      else setText(display);
+      // Blank clears the field (unconfigures) when that is allowed.
+      if (emptyWhenZero) { if (value !== 0) onCommit(0); } else setText(display);
+      setErr(null);
       return;
     }
     const n = Number(t);
-    if (!isNaN(n) && n !== value) onCommit(n);
-    else setText(display);
+    if (isNaN(n)) { setErr("enter a number"); return; }
+    if (!(emptyWhenZero && n === 0)) {
+      if (min !== undefined && n < min) { setErr(`must be ≥ ${min}`); return; }
+      if (max !== undefined && n > max) { setErr(`must be ≤ ${max}`); return; }
+    }
+    setErr(null);
+    if (n !== value) onCommit(n);
   };
 
   return (
-    <input
-      type="number"
-      step={step}
-      placeholder={placeholder}
-      value={text}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-      }}
-    />
+    <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+      <input
+        type="number"
+        step={step}
+        placeholder={placeholder}
+        value={text}
+        style={err ? { borderColor: "#c23b34" } : undefined}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        }}
+      />
+      {err && <span style={{ color: "#c23b34", fontSize: 10 }}>{err}</span>}
+    </span>
   );
 }
 
