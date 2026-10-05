@@ -28,7 +28,7 @@ export function Analysis() {
           <ParamField label="Discharge coeff Cd" k="injector.discharge_coefficient" def={0.7} step={0.01} />
           <ParamField label="Surface tension" k="injector.surface_tension_n_m" def={0.02} step={0.005} unit="N/m" hint="atomization (SMD)" />
           <ParamField label="Fuel/ox density ratio" k="injector.fuel_density_factor" def={0.72} step={0.02} />
-          <ParamField label="Combustion time lag τ" k="injector.time_lag_ms" def={1.5} step={0.1} unit="ms" hint="n–τ instability model" />
+          <ParamField label="Combustion time lag τ" k="injector.time_lag_ms" def={1.5} step={0.1} dim="time" baseUnit="ms" hint="n–τ instability model" />
           <ParamField label="Interaction index n" k="injector.interaction_index" def={0.5} step={0.05} hint="Crocco n–τ; lower = more stable" />
         </div>
       </fieldset>

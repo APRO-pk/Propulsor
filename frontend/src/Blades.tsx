@@ -54,26 +54,26 @@ export function Blades() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
           {mode === "pump" && <>
             <ParamField label="Blade count Z" k="blade.pump_blade_count" def={6} step={1} hint="number of impeller blades (Wiesner slip factor)" />
-            <ParamField label="Outlet blade angle β₂" k="blade.pump_outlet_angle_deg" def={22.5} step={0.5} unit="°" hint="backswept angle from tangent (20–35° typical)" />
-            <ParamField label="Inlet axial velocity" k="blade.pump_inlet_axial_vel" def={10} step={0.5} unit="m/s" />
+            <ParamField label="Outlet blade angle β₂" k="blade.pump_outlet_angle_deg" def={22.5} step={0.5} dim="angle" baseUnit="°" hint="backswept angle from tangent (20–35° typical)" />
+            <ParamField label="Inlet axial velocity" k="blade.pump_inlet_axial_vel" def={10} step={0.5} dim="velocity" baseUnit="m/s" />
             <ParamField label="Pump efficiency" k="blade.pump_efficiency" def={0.7} step={0.01} hint="hydraulic efficiency (0.3–0.95)" />
             <ParamChoice label="Impeller material" k="blade.impeller_material" def="Inconel 718" options={["Inconel 718", "Titanium", "Aluminum", "Steel"]} hint="sets the tip-speed structural limit" />
             <ParamField label="Inducer hub ratio" k="blade.inducer_hub_ratio" def={0.4} step={0.02} />
           </>}
           {mode === "turbine" && <>
             <ParamField label="Blade count Z" k="blade.turbine_blade_count" def={40} step={1} />
-            <ParamField label="Nozzle angle α" k="blade.nozzle_angle_deg" def={20} step={0.5} unit="°" hint="absolute flow angle from tangent (15–25°)" />
+            <ParamField label="Nozzle angle α" k="blade.nozzle_angle_deg" def={20} step={0.5} dim="angle" baseUnit="°" hint="absolute flow angle from tangent (15–25°)" />
             <ParamField label="Drive-gas cp" k="blade.turbine_cp" def={2000} step={50} unit="J/kg·K" />
-            <ParamField label="Drive-gas Tin" k="blade.turbine_inlet_temp_k" def={950} step={25} unit="K" />
+            <ParamField label="Drive-gas Tin" k="blade.turbine_inlet_temp_k" def={950} step={25} dim="temperature" baseUnit="K" />
             <ParamField label="Drive-gas γ" k="blade.turbine_gamma" def={1.3} step={0.01} />
             <ParamField label="Pressure ratio (0=auto)" k="blade.turbine_pressure_ratio" def={0} step={0.5} hint="0 → from Pc; impulse range 8–20" />
             <ParamField label="GG flow fraction" k="blade.gg_flow_fraction" def={0.03} step={0.005} hint="turbine drive flow / total flow" />
           </>}
           {mode === "supersonic" && <>
             <ParamField label="Blade count Z" k="blade.supersonic_blade_count" def={50} step={1} />
-            <ParamField label="Nozzle angle α" k="blade.nozzle_angle_deg" def={20} step={0.5} unit="°" />
+            <ParamField label="Nozzle angle α" k="blade.nozzle_angle_deg" def={20} step={0.5} dim="angle" baseUnit="°" />
             <ParamField label="Drive-gas cp" k="blade.turbine_cp" def={2000} step={50} unit="J/kg·K" />
-            <ParamField label="Drive-gas Tin" k="blade.turbine_inlet_temp_k" def={950} step={25} unit="K" />
+            <ParamField label="Drive-gas Tin" k="blade.turbine_inlet_temp_k" def={950} step={25} dim="temperature" baseUnit="K" />
             <ParamField label="Drive-gas γ" k="blade.turbine_gamma" def={1.3} step={0.01} />
           </>}
           <ParamField label="Tip clearance ratio" k="blade.clearance_ratio" def={0.02} step={0.005} hint="clearance / span (loss model)" />

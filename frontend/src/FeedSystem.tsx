@@ -58,16 +58,16 @@ export function FeedSystem() {
         <legend>Design inputs<span style={{ float: "right" }}><ResetParams prefix="feed." /></span></legend>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0 16px" }}>
           <ParamField label="Injector ΔP (frac of Pc)" k="feed.injector_dp_fraction" def={0.2} step={0.01} hint="0.15–0.3 typical" />
-          <ParamField label="Line ΔP" k="feed.line_dp_bar" def={1.0} step={0.1} unit="bar" />
-          <ParamField label="Pump-fed tank pressure" k="feed.pumpfed_tank_bar" def={3.0} step={0.5} unit="bar" />
+          <ParamField label="Line ΔP" k="feed.line_dp_bar" def={1.0} step={0.1} dim="pressure" baseUnit="bar" />
+          <ParamField label="Pump-fed tank pressure" k="feed.pumpfed_tank_bar" def={3.0} step={0.5} dim="pressure" baseUnit="bar" />
           <ParamField label="Tank L/D ratio" k="feed.tank_ld_ratio" def={2.6} step={0.1} />
           <ParamField label="Ullage factor" k="feed.ullage_factor" def={1.06} step={0.01} />
-          <ParamField label="Tank wall allowable" k="feed.tank_allowable_mpa" def={250} step={10} unit="MPa" />
+          <ParamField label="Tank wall allowable" k="feed.tank_allowable_mpa" def={250} step={10} dim="pressure" baseUnit="MPa" />
           <ParamField label="Tank test factor" k="feed.tank_test_factor" def={1.5} step={0.1} />
           <ParamField label="Tank wall density" k="feed.tank_wall_density" def={2700} step={100} unit="kg/m³" />
           <ParamChoice label="Pressurant gas" k="feed.pressurant_gas" def="Helium" options={["Helium", "Nitrogen", "Argon"]} hint="He preferred (lowest MW → least mass)" />
           <ParamField label="Pressurant factor" k="feed.pressurant_factor" def={1.6} step={0.1} hint="over ideal-gas mass (residual, cooling, ullage)" />
-          <ParamField label="Pressurant bottle P" k="feed.pressurant_bottle_bar" def={274} step={10} unit="bar" hint="stored up to ~270 atm (Cannon)" />
+          <ParamField label="Pressurant bottle P" k="feed.pressurant_bottle_bar" def={274} step={10} dim="pressure" baseUnit="bar" hint="stored up to ~270 atm (Cannon)" />
         </div>
       </fieldset>
 
@@ -152,7 +152,7 @@ function Avionics({ harness }: { harness: AvionicsHarnessDto }) {
         <ParamField label="Housekeeping current" k="avionics.housekeeping_current_a" def={0.5} step={0.1} unit="A" hint="flight computer + telemetry" />
         <ParamField label="Main-valve current" k="avionics.main_valve_current_a" def={3.0} step={0.5} unit="A" />
         <ParamField label="Igniter current" k="avionics.igniter_current_a" def={5.0} step={0.5} unit="A" />
-        <ParamField label="Wire run (0=auto)" k="avionics.run_length_m" def={0} step={0.1} unit="m" hint="override the derived avionics-bay→component run length" />
+        <ParamField label="Wire run (0=auto)" k="avionics.run_length_m" def={0} step={0.1} dim="length" baseUnit="m" hint="override the derived avionics-bay→component run length" />
       </div>
       <div style={{ textAlign: "right", marginBottom: 6 }}><ResetParams prefix="avionics." /></div>
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", margin: "6px 0 10px" }}>

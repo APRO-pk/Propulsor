@@ -12,7 +12,8 @@ export type Dim =
   | "velocity"
   | "massflow"
   | "power"
-  | "time";
+  | "time"
+  | "angle";
 
 export interface Unit {
   label: string;
@@ -55,6 +56,10 @@ export const DIMS: Record<Dim, { base: string; units: Unit[] }> = {
   time: {
     base: "s",
     units: [lin("s", 1, 2), lin("ms", 1e-3, 1), lin("min", 60, 2)],
+  },
+  angle: {
+    base: "rad",
+    units: [lin("°", Math.PI / 180, 1), lin("rad", 1, 4)],
   },
   temperature: {
     base: "K",

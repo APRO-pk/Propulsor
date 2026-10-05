@@ -46,18 +46,18 @@ export function Turbopumps() {
           <ParamField label="Pump efficiency" k="turbo.pump_efficiency" def={0.7} step={0.01} />
           <ParamField label="Suction spec. speed Nss" k="turbo.suction_specific_speed" def={500} step={50} hint="cavitation/inducer suction performance" />
           <ParamField label="Inducer hub ratio" k="turbo.inducer_hub_ratio" def={0.4} step={0.02} />
-          <ParamField label="Tank pressure" k="turbo.tank_pressure_bar" def={3.0} step={0.5} unit="bar" />
+          <ParamField label="Tank pressure" k="turbo.tank_pressure_bar" def={3.0} step={0.5} dim="pressure" baseUnit="bar" />
           <ParamField label="Discharge factor ×Pc" k="turbo.discharge_pressure_factor" def={1.25} step={0.05} />
           <ParamField label="GG flow fraction" k="turbo.gg_flow_fraction" def={0.03} step={0.005} />
           <ParamField label="Turbine efficiency" k="turbo.turbine_efficiency" def={0.65} step={0.01} />
           <ParamField label="Turbine cp" k="turbo.turbine_cp" def={2000} step={50} unit="J/kg·K" />
           <ParamField label="Turbine γ" k="turbo.turbine_gamma" def={1.3} step={0.01} />
-          <ParamField label="Turbine Tin" k="turbo.turbine_inlet_temp_k" def={950} step={25} unit="K" />
-          <ParamField label="Turbine exit pressure" k="turbo.turbine_exit_pressure_bar" def={3.0} step={0.5} unit="bar" />
-          <ParamField label="Bearing bore" k="turbo.bearing_bore_mm" def={45} step={1} unit="mm" />
+          <ParamField label="Turbine Tin" k="turbo.turbine_inlet_temp_k" def={950} step={25} dim="temperature" baseUnit="K" />
+          <ParamField label="Turbine exit pressure" k="turbo.turbine_exit_pressure_bar" def={3.0} step={0.5} dim="pressure" baseUnit="bar" />
+          <ParamField label="Bearing bore" k="turbo.bearing_bore_mm" def={45} step={1} dim="length" baseUnit="mm" />
           <ParamField label="Bearing DN limit" k="turbo.bearing_dn_limit_millions" def={2.0} step={0.1} unit="M" hint="rolling-element DN limit 1.6–2.1 million (Cannon)" />
           <ParamField label="Bearing life" k="turbo.bearing_life_hours" def={5000} step={500} unit="h" />
-          <ParamField label="Shaft allowable shear" k="turbo.shaft_allowable_shear_mpa" def={200} step={10} unit="MPa" />
+          <ParamField label="Shaft allowable shear" k="turbo.shaft_allowable_shear_mpa" def={200} step={10} dim="pressure" baseUnit="MPa" />
         </div>
       </fieldset>
 
