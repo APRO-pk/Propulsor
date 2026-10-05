@@ -426,6 +426,9 @@ export interface IssuesReportDto {
   warnings: number;
 }
 
+export interface SweepPointDto { pc_bar: number; of: number; tc_k: number; c_star_m_s: number; isp_vac_s: number; gamma: number }
+export interface SweepResultDto { pc_values_bar: number[]; of_values: number[]; points: SweepPointDto[] }
+
 const TAURI_AVAILABLE = "__TAURI_INTERNALS__" in window;
 
 /** Invoke a Tauri command, or return a browser-dev fallback outside the host. */
@@ -467,6 +470,8 @@ export const feedStudy = (burnTimeS: number, feedType: string) =>
 export const tradeBundle = () => invoke<TradeBundleDto>("trade_bundle");
 export const bladeStudy = (speedRpm: number) => invoke<BladeStudyDto>("blade_study", { speedRpm });
 export const issuesReport = () => invoke<IssuesReportDto>("issues_report");
+export const sweep = (pcMinBar: number, pcMaxBar: number, pcSteps: number, ofMin: number, ofMax: number, ofSteps: number) =>
+  invoke<SweepResultDto>("sweep", { pcMinBar, pcMaxBar, pcSteps, ofMin, ofMax, ofSteps });
 
 /**
  * Representative data for running the UI in a plain browser (`vite dev`) without
@@ -507,6 +512,8 @@ function mockCommand<T>(cmd: string, args: Record<string, unknown>): T {
       return mockControl(String(args.feedType ?? "")) as unknown as T;
     case "issues_report":
       return mockIssues() as unknown as T;
+    case "sweep":
+      return mockSweep(args) as unknown as T;
     default:
       return undefined as unknown as T;
   }
@@ -877,6 +884,38 @@ function mockControl(feedType: string): ControlStudyDto {
     loops, sensors, actuators, redlines, pc_step: step, pc_settling_time_s: settling, pc_overshoot_pct: overshoot,
     summary: `${architecture} | PI @ ${sample.toFixed(0)} Hz | Pc setpt ${(pc / 1e5).toFixed(1)} bar, MR ${mr.toFixed(2)} | τ_fill=${(tauFill * 1e3).toFixed(1)} ms, σ=${sigmaMs.toFixed(1)} ms | Pc settle ${settling.toFixed(2)} s, overshoot ${overshoot.toFixed(1)}%`,
   };
+}
+
+function mockSweep(args: Record<string, unknown>): SweepResultDto {
+  const props = mockProps();
+  const lin = (lo: number, hi: number, n: number) => {
+    n = Math.max(1, Math.min(9, Math.round(n)));
+    if (n === 1) return [lo];
+    return Array.from({ length: n }, (_, i) => lo + (hi - lo) * (i / (n - 1)));
+  };
+  const pcMin = Math.max(0.5, Number(args.pcMinBar ?? 20));
+  const pcMax = Math.max(pcMin + 0.5, Number(args.pcMaxBar ?? 100));
+  const ofMin = Math.max(0.1, Number(args.ofMin ?? props.ofOpt - 1));
+  const ofMax = Math.max(ofMin + 0.1, Number(args.ofMax ?? props.ofOpt + 1));
+  const pc_values_bar = lin(pcMin, pcMax, Number(args.pcSteps ?? 5));
+  const of_values = lin(ofMin, ofMax, Number(args.ofSteps ?? 5));
+  const cstar = cstarOf(props);
+  const peak = props.ispSea + 40;
+  const points: SweepPointDto[] = [];
+  for (const pc of pc_values_bar) {
+    for (const of of of_values) {
+      const dOf = of - props.ofOpt;
+      points.push({
+        pc_bar: +pc.toFixed(1),
+        of: +of.toFixed(2),
+        tc_k: props.tc - 400 * dOf * dOf,
+        c_star_m_s: cstar - 80 * dOf * dOf,
+        isp_vac_s: peak - 55 * dOf * dOf + 6 * Math.log(pc / 20),
+        gamma: props.gamma,
+      });
+    }
+  }
+  return { pc_values_bar, of_values, points };
 }
 
 function mockIssues(): IssuesReportDto {

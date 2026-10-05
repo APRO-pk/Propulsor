@@ -198,6 +198,16 @@ fn dispatch(state: &DesignState, cmd: &str, args: &serde_json::Value) -> Result<
             let v = simulate::design::collect_issues(&mut d).map_err(|e| e.to_string())?;
             serde_json::to_value(v).map_err(|e| e.to_string())
         }
+        "sweep" => {
+            let d = current(state)?;
+            let v = simulate::design::sweep(
+                &d,
+                num("pcMinBar"), num("pcMaxBar"), num("pcSteps") as usize,
+                num("ofMin"), num("ofMax"), num("ofSteps") as usize,
+            )
+            .map_err(|e| e.to_string())?;
+            serde_json::to_value(v).map_err(|e| e.to_string())
+        }
         "feed_study" => {
             let mut d = current(state)?;
             let v = simulate::design::feed_study(&mut d, num("burnTimeS"), &text("feedType")).map_err(|e| e.to_string())?;

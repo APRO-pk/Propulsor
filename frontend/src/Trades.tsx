@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { tradeBundle, type TradeBundleDto } from "./api";
+import { tradeBundle, sweep, type TradeBundleDto, type SweepResultDto } from "./api";
 import { useEngineStore } from "./store";
 
 const AXIS = { fill: "#6b7280", fontSize: 12 } as const;
@@ -20,12 +20,22 @@ export function Trades() {
     };
   }, [rev]);
 
-  if (!t) return <p className="muted">Running trade studies…</p>;
-
   // Current design's position on each sweep, to mark alongside the optimum.
   const curOf = design?.operating_point.mixture_ratio ?? 0;
   const curEps = l2?.area_ratio ?? 0;
   const curLStar = design?.geometry?.chamber?.l_star_m ?? 0;
+  const curPcBar = (design?.operating_point.chamber_pressure ?? 6e6) / 1e5;
+
+  const [sw, setSw] = useState<SweepResultDto | null>(null);
+  const [metric, setMetric] = useState<"isp" | "cstar" | "tc">("isp");
+  const [range, setRange] = useState(() => ({
+    pcMin: Math.max(5, Math.round(curPcBar * 0.5)),
+    pcMax: Math.max(10, Math.round(curPcBar * 1.5)),
+    pcSteps: 5, ofMin: 2, ofMax: 4, ofSteps: 5,
+  }));
+  const runSweep = () => sweep(range.pcMin, range.pcMax, range.pcSteps, range.ofMin, range.ofMax, range.ofSteps).then(setSw).catch(() => {});
+
+  if (!t) return <p className="muted">Running trade studies…</p>;
 
   return (
     <div>
@@ -115,6 +125,49 @@ export function Trades() {
           </table>
         </fieldset>
       </div>
+
+      <fieldset className="qt-groupbox">
+        <legend>Parametric sweep (Pc × O/F) — CEA-style</legend>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 8 }}>
+          {([["Pc min (bar)", "pcMin"], ["Pc max (bar)", "pcMax"], ["Pc steps", "pcSteps"], ["O/F min", "ofMin"], ["O/F max", "ofMax"], ["O/F steps", "ofSteps"]] as const).map(([lbl, key]) => (
+            <label key={key} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <span style={{ fontSize: 11, color: "#6b7280" }}>{lbl}</span>
+              <input type="number" style={{ width: 82 }} value={range[key]} onChange={(e) => setRange((r) => ({ ...r, [key]: Number(e.target.value) }))} />
+            </label>
+          ))}
+          <button className="qt-tool" onClick={runSweep}>Run sweep</button>
+          <span style={{ marginLeft: 8 }}>
+            {([["isp", "Isp vac"], ["cstar", "c*"], ["tc", "T_c"]] as const).map(([m, lbl]) => (
+              <button key={m} className={`qt-tool ${metric === m ? "on" : ""}`} style={{ marginLeft: 4 }} onClick={() => setMetric(m)}>{lbl}</button>
+            ))}
+          </span>
+        </div>
+        {sw ? (
+          <table className="qt-proptable">
+            <thead>
+              <tr>
+                <th>O/F ╲ Pc (bar)</th>
+                {sw.pc_values_bar.map((p) => <th key={p} className="val">{p.toFixed(0)}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {sw.of_values.map((of) => (
+                <tr key={of}>
+                  <td className="val">{of.toFixed(2)}</td>
+                  {sw.pc_values_bar.map((pc) => {
+                    const pt = sw.points.find((q) => Math.abs(q.pc_bar - pc) < 0.5 && Math.abs(q.of - of) < 0.05);
+                    const v = !pt ? "—" : metric === "isp" ? pt.isp_vac_s.toFixed(1) : metric === "cstar" ? pt.c_star_m_s.toFixed(0) : pt.tc_k.toFixed(0);
+                    return <td key={pc} className="val">{v}</td>;
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="muted">Set the Pc and O/F ranges and click "Run sweep" to tabulate equilibrium Isp / c* / T_c across the grid (steps capped at 9 each).</p>
+        )}
+        <p className="qt-caption" style={{ marginTop: 4 }}>Isp is the vacuum ideal-max (Γ-limit) from the equilibrium solve; rows = O/F, columns = chamber pressure (bar).</p>
+      </fieldset>
     </div>
   );
 }

@@ -147,6 +147,24 @@ pub fn issues_report(state: State<'_, AppState>) -> Result<serde_json::Value, St
     serde_json::to_value(report).map_err(|e| e.to_string())
 }
 
+/// Parametric sweep (CEA-style): equilibrium thermochemistry over a Pc × O/F grid.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn sweep(
+    state: State<'_, AppState>,
+    pc_min_bar: f64,
+    pc_max_bar: f64,
+    pc_steps: f64,
+    of_min: f64,
+    of_max: f64,
+    of_steps: f64,
+) -> Result<serde_json::Value, String> {
+    let design = current_design(&state)?;
+    let r = simulate::design::sweep(&design, pc_min_bar, pc_max_bar, pc_steps as usize, of_min, of_max, of_steps as usize)
+        .map_err(|e| e.to_string())?;
+    serde_json::to_value(r).map_err(|e| e.to_string())
+}
+
 /// Trade/optimization studies (section G): O/F, expansion, L*, material, injector.
 #[tauri::command]
 pub fn trade_bundle(state: State<'_, AppState>) -> Result<serde_json::Value, String> {

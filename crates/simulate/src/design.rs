@@ -595,6 +595,73 @@ pub fn trade_bundle(design: &mut EngineDesign) -> Result<TradeBundle, EngineErro
     })
 }
 
+// ---- Parametric sweep (CEA-style Pc × O/F) ---------------------------------
+
+/// One grid point of the parametric sweep.
+#[derive(Debug, Clone, Serialize)]
+pub struct SweepPoint {
+    pub pc_bar: f64,
+    pub of: f64,
+    pub tc_k: f64,
+    pub c_star_m_s: f64,
+    pub isp_vac_s: f64,
+    pub gamma: f64,
+}
+
+/// Parametric-sweep result: the axes plus the grid of thermochemistry points.
+#[derive(Debug, Clone, Serialize)]
+pub struct SweepResult {
+    pub pc_values_bar: Vec<f64>,
+    pub of_values: Vec<f64>,
+    pub points: Vec<SweepPoint>,
+}
+
+/// Sweep chamber pressure × mixture ratio, solving the equilibrium thermochemistry
+/// at each grid point (CEA-style parametric table). Steps are clamped so the grid
+/// stays small enough to solve interactively.
+pub fn sweep(
+    design: &EngineDesign,
+    pc_min_bar: f64,
+    pc_max_bar: f64,
+    pc_steps: usize,
+    of_min: f64,
+    of_max: f64,
+    of_steps: usize,
+) -> Result<SweepResult, EngineError> {
+    let pair = design.propellant.pair;
+    let lin = |lo: f64, hi: f64, n: usize| -> Vec<f64> {
+        let n = n.clamp(1, 9);
+        if n == 1 {
+            return vec![lo];
+        }
+        (0..n).map(|i| lo + (hi - lo) * i as f64 / (n - 1) as f64).collect()
+    };
+    let pc_values_bar = lin(pc_min_bar.max(0.5), pc_max_bar.max(pc_min_bar + 0.5), pc_steps);
+    let of_values = lin(of_min.max(0.1), of_max.max(of_min + 0.1), of_steps);
+
+    let mut points = Vec::new();
+    for &pc in &pc_values_bar {
+        for &of in &of_values {
+            if let Ok(r) = thermo::solve(&thermo::ThermoInput {
+                of_ratio: of,
+                chamber_pressure_pa: pc * 1e5,
+                propellant_pair: pair,
+                method: thermo::ThermoMethod::GibbsFreeEnergy,
+            }) {
+                points.push(SweepPoint {
+                    pc_bar: (pc * 10.0).round() / 10.0,
+                    of: (of * 100.0).round() / 100.0,
+                    tc_k: r.tc_k,
+                    c_star_m_s: r.c_star_m_s,
+                    isp_vac_s: r.isp_vacuum_s,
+                    gamma: r.gamma,
+                });
+            }
+        }
+    }
+    Ok(SweepResult { pc_values_bar, of_values, points })
+}
+
 /// Closed-loop engine-control study (NASA TM-105318): Pc/MR loop architecture,
 /// sensor/valve suite, chamber dynamics, and the closed-loop throttle response.
 pub fn control_study(design: &mut EngineDesign, feed_type: &str) -> Result<feedsystem::control::ControlStudy, EngineError> {
