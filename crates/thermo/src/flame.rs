@@ -149,16 +149,25 @@ pub fn element_amounts(fuel: &Fuel, ox: &Oxidizer, of_ratio: f64) -> [f64; 4] {
 }
 
 /// Adiabatic flame temperature (K) for a propellant pair at a chamber pressure.
+#[allow(clippy::too_many_arguments)]
 pub fn adiabatic_tc(
     species: &[Species],
     fuel: &Fuel,
     ox: &Oxidizer,
     of_ratio: f64,
     p: f64,
+    fuel_temp_k: f64,
+    ox_temp_k: f64,
 ) -> EngineResult<f64> {
     let b = element_amounts(fuel, ox, of_ratio);
-    // Reactant enthalpy includes the oxidizer's heat of formation (zero for O₂).
-    let h_react = fuel.d_hf + ox_moles_per_fuel(fuel, ox, of_ratio) * ox.d_hf;
+    let r = ox_moles_per_fuel(fuel, ox, of_ratio);
+    // Reactant enthalpy = heats of formation (at 298.15 K) plus the sensible-heat
+    // shift to the actual inlet temperatures. Approximate molar heat capacities:
+    // ~2.0 J/(g·K) for the fuel, ~1.7 J/(g·K) for the oxidizer. Cryogenic inlets
+    // (below 298.15 K) lower the flame temperature; preheated inlets raise it.
+    let cp_fuel = 2.0 * fuel.mw;
+    let cp_ox = 1.7 * ox.mw;
+    let h_react = (fuel.d_hf + cp_fuel * (fuel_temp_k - T_REF)) + r * (ox.d_hf + cp_ox * (ox_temp_k - T_REF));
 
     // f(T) = H_products(T) - H_reactants. H_products increases with T.
     let f = |t: f64| -> f64 {

@@ -103,6 +103,9 @@ export function Cooling() {
         </label>
         <ParamField label="Coolant velocity" k="cooling.coolant_velocity_m_s" def={6} step={1} unit="m/s" hint="regen jacket bulk velocity — higher lowers the wall temperature" />
         <ParamField label="Coolant pressure" k="cooling.coolant_pressure_bar" def={3} step={0.5} unit="bar" hint="coolant inlet pressure — sets the boiling margin" />
+        <ParamField label="Cooling channels" k="cooling.channel_count" def={0} step={10} hint="discrete milled/printed channels; 0 → annular-gap model" />
+        <ParamField label="Channel width" k="cooling.channel_width_mm" def={1.5} step={0.1} unit="mm" hint="rectangular channel width (used when channels > 0)" />
+        <ParamField label="Channel height" k="cooling.channel_height_mm" def={3.0} step={0.1} unit="mm" hint="rectangular channel depth (used when channels > 0)" />
         {study && (
           <>
             <div className="qt-field">
@@ -139,9 +142,10 @@ export function Cooling() {
           <legend>{METHODS.find((m) => m.id === method)?.label} detail inputs<span style={{ float: "right" }}><ResetParams prefix="cooling." /></span></legend>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "0 16px" }}>
             {method === "film" && <>
+              <ParamField label="Film fraction" k="cooling.film_fraction" def={0} step={0.01} hint="fraction of total flow bled as film coolant; >0 sets the film velocity (0 = use velocity below)" />
               <ParamField label="Coolant temperature" k="cooling.film_coolant_temp_k" def={400} step={25} unit="K" />
               <ParamField label="Coolant density" k="cooling.film_coolant_density" def={5} step={0.5} unit="kg/m³" />
-              <ParamField label="Coolant velocity" k="cooling.film_coolant_velocity" def={120} step={10} unit="m/s" hint="higher velocity → thicker film" />
+              <ParamField label="Coolant velocity" k="cooling.film_coolant_velocity" def={120} step={10} unit="m/s" hint="used when film fraction = 0; higher velocity → thicker film" />
               <ParamField label="Slot height" k="cooling.film_slot_height_mm" def={1.5} step={0.1} unit="mm" />
               <ParamField label="Injection x" k="cooling.film_injection_x_m" def={0} step={0.01} unit="m" hint="axial start of the film" />
             </>}

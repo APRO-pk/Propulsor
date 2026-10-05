@@ -34,10 +34,16 @@ pub struct L3Input {
     pub wall_material: materials::Material,
     /// Wall thickness, m.
     pub wall_thickness_m: f64,
-    /// Coolant gap (annular channel), m.
+    /// Coolant gap (annular channel), m — the fallback when no discrete channels.
     pub coolant_gap_m: f64,
     /// Coolant bulk velocity, m/s.
     pub coolant_velocity_m_s: f64,
+    /// Number of discrete milled/printed cooling channels (0 = annular gap model).
+    pub channel_count: f64,
+    /// Rectangular channel width, m (used when `channel_count` > 0).
+    pub channel_width_m: f64,
+    /// Rectangular channel height/depth, m (used when `channel_count` > 0).
+    pub channel_height_m: f64,
     /// Coolant inlet pressure, Pa.
     pub coolant_pressure_pa: f64,
     /// Optional wall film cooling injected at a given axial station.
@@ -141,10 +147,16 @@ pub fn solve_l3(input: &L3Input) -> Result<CoolingResult, EngineError> {
     let coolant_cp = 4186.0;
     let coolant_inlet_k = 300.0;
 
-    // Coolant mass flow from the channel velocity and the annular flow area at the
-    // throat (the tightest section), plus the single-circuit coolant-side coefficient.
-    let d_h = 2.0 * input.coolant_gap_m;
-    let channel_area = std::f64::consts::PI * (2.0 * r_t) * input.coolant_gap_m;
+    // Coolant-side geometry: discrete rectangular channels when specified, else the
+    // annular gap at the throat. Hydraulic diameter and total flow area set the
+    // Reynolds number, coolant-side coefficient and coolant mass flow.
+    let (d_h, channel_area) = if input.channel_count > 0.0 && input.channel_width_m > 0.0 && input.channel_height_m > 0.0 {
+        let w = input.channel_width_m;
+        let h = input.channel_height_m;
+        (2.0 * w * h / (w + h), input.channel_count * w * h)
+    } else {
+        (2.0 * input.coolant_gap_m, std::f64::consts::PI * (2.0 * r_t) * input.coolant_gap_m)
+    };
     let m_dot_cool = (coolant_rho * input.coolant_velocity_m_s * channel_area).max(1e-4);
     let re_cool = coolant_rho * input.coolant_velocity_m_s * d_h / coolant_mu;
     let h_cool = gnielinski(re_cool, 7.0, d_h, coolant_k, coolant_mu, coolant_rho);
@@ -368,6 +380,9 @@ mod tests {
             wall_thickness_m: 0.001,
             coolant_gap_m: 0.002,
             coolant_velocity_m_s: 6.0,
+            channel_count: 0.0,
+            channel_width_m: 0.0,
+            channel_height_m: 0.0,
             coolant_pressure_pa: 3.0e5,
             film_cooling: None,
         }

@@ -353,9 +353,11 @@ impl EngineDesign {
         };
 
         // Dotted keys (e.g. "blade.pump_blade_count", "feed.pressurant_gas") are
-        // per-subsystem study parameters: persisted in the param/choice bag and
-        // read by the studies with a physical default. They don't feed the L0–L5
-        // tier chain, so nothing is invalidated.
+        // per-subsystem parameters persisted in the param/choice bag. Most are read
+        // directly by the study functions, so they don't touch the L0–L5 tier chain.
+        // Some, however, feed the tier pipeline and must invalidate it:
+        //   reactant.* → L1 (thermochemistry), thermo.* → L2 (nozzle flow),
+        //   cooling.*/material.* → L3 (cooling + the material the stress tiers read).
         if field.contains('.') {
             match &value {
                 // Sentinel: clear the key so the study reverts to its default.
@@ -370,8 +372,20 @@ impl EngineDesign {
                     self.choices.insert(field.to_string(), s.clone());
                 }
             }
+            let root = if field.starts_with("reactant.") {
+                Some(Tier::L1)
+            } else if field.starts_with("thermo.") {
+                Some(Tier::L2)
+            } else if field.starts_with("cooling.") || field.starts_with("material.") {
+                Some(Tier::L3)
+            } else {
+                None
+            };
+            if let Some(t) = root {
+                crate::provenance::mark_stale_from_root(self, t);
+            }
             self.meta.revision += 1;
-            return Ok(Tier::L5);
+            return Ok(root.unwrap_or(Tier::L5));
         }
 
         let root = match field {

@@ -86,8 +86,17 @@ pub fn cooling_study(design: &mut EngineDesign, material_name: &str, method: &st
     // --- User design inputs (persisted cooling.* params; best-practice defaults) ---
     let film_coolant_temp = design.param("cooling.film_coolant_temp_k", 400.0);
     let film_coolant_density = design.param("cooling.film_coolant_density", 5.0).max(0.1);
-    let film_coolant_velocity = design.param("cooling.film_coolant_velocity", 120.0).max(1.0);
     let film_slot_height = design.param("cooling.film_slot_height_mm", 1.5).max(0.1) * 1e-3;
+    // Film coolant velocity: either a direct value, or derived from a film-cooling
+    // mass fraction of total flow (ṁ_film/(ρ·π·D·slot)) when that fraction is set.
+    let film_fraction = design.param("cooling.film_fraction", 0.0).clamp(0.0, 0.3);
+    let film_coolant_velocity = if film_fraction > 0.0 {
+        let m_film = film_fraction * l0.total_flow.as_si();
+        let a_slot = std::f64::consts::PI * l0.chamber_diameter.as_si() * film_slot_height;
+        (m_film / (design.param("cooling.film_coolant_density", 5.0).max(0.1) * a_slot).max(1e-6)).clamp(1.0, 2000.0)
+    } else {
+        design.param("cooling.film_coolant_velocity", 120.0).max(1.0)
+    };
     let film_injection_x = design.param("cooling.film_injection_x_m", 0.0);
     let film_visc = design.param("cooling.film_coolant_viscosity", 2.0e-5).max(1e-7);
     let ablative_burn_time = design.param("cooling.ablative_burn_time_s", 30.0).max(1.0);
@@ -494,6 +503,7 @@ pub fn trade_bundle(design: &mut EngineDesign) -> Result<TradeBundle, EngineErro
     // O/F sweep → vacuum Isp.
     let mut of_sweep = Vec::new();
     let (of_lo, of_hi) = (0.8, 4.4);
+    let (fuel_temp_k, ox_temp_k) = reactant_temps(design);
     for k in 0..=18 {
         let of = of_lo + (of_hi - of_lo) * k as f64 / 18.0;
         if let Ok(r) = thermo::solve(&thermo::ThermoInput {
@@ -501,6 +511,8 @@ pub fn trade_bundle(design: &mut EngineDesign) -> Result<TradeBundle, EngineErro
             chamber_pressure_pa: pc,
             propellant_pair: pair,
             method: thermo::ThermoMethod::GibbsFreeEnergy,
+            fuel_temp_k,
+            ox_temp_k,
         }) {
             of_sweep.push(OfPoint { of: (of * 100.0).round() / 100.0, isp_vac_s: r.isp_vacuum_s });
         }
@@ -644,6 +656,7 @@ pub fn sweep(
     let pc_values_bar = lin(pc_min_bar.max(0.5), pc_max_bar.max(pc_min_bar + 0.5), pc_steps);
     let of_values = lin(of_min.max(0.1), of_max.max(of_min + 0.1), of_steps);
 
+    let (fuel_temp_k, ox_temp_k) = reactant_temps(design);
     let mut points = Vec::new();
     for &pc in &pc_values_bar {
         for &of in &of_values {
@@ -652,6 +665,8 @@ pub fn sweep(
                 chamber_pressure_pa: pc * 1e5,
                 propellant_pair: pair,
                 method: thermo::ThermoMethod::GibbsFreeEnergy,
+                fuel_temp_k,
+                ox_temp_k,
             }) {
                 points.push(SweepPoint {
                     pc_bar: (pc * 10.0).round() / 10.0,
@@ -866,6 +881,15 @@ pub fn collect_issues(design: &mut EngineDesign) -> Result<IssuesReport, EngineE
     Ok(IssuesReport { issues, failed, warnings })
 }
 
+/// Fuel and oxidizer inlet (reactant) temperatures from the design (`reactant.*`
+/// params), defaulting to 298.15 K. Cryogenic inlets lower the flame temperature.
+pub fn reactant_temps(design: &EngineDesign) -> (f64, f64) {
+    (
+        design.param("reactant.fuel_temp_k", 298.15).max(10.0),
+        design.param("reactant.ox_temp_k", 298.15).max(10.0),
+    )
+}
+
 /// Resolve a wall-material name to a [`cooling::materials::Material`]. The name
 /// `"Custom"` builds a material from the user's persisted `material.custom_*`
 /// params, so a design can use a material outside the fixed database (#13).
@@ -1028,8 +1052,15 @@ pub fn feed_study(design: &mut EngineDesign, burn_time_s: f64, feed_type: &str) 
     // Gaseous-oxidizer (GOX) pairs store the oxidizer as a compressed gas, so its
     // tank density follows the ideal-gas law at the tank pressure (≈ P·MW/(R·T)),
     // not the liquid-oxygen density. This makes the GOX tank volume physical.
-    let ox_rho = if oxidizer_is_gaseous(pair) {
-        let storage_t = design.param("feed.gas_storage_temp_k", 293.0).max(100.0);
+    // Oxidizer state: the design choice overrides the propellant default, so a user
+    // can store a nominally-liquid oxidizer as a gas (or vice versa). Gas tanks are
+    // sized from the ideal-gas density at the tank pressure.
+    let ox_is_gas = design
+        .choice("reactant.ox_state", if oxidizer_is_gaseous(pair) { "gas" } else { "liquid" })
+        .to_lowercase()
+        .contains("gas");
+    let ox_rho = if ox_is_gas {
+        let storage_t = design.param("reactant.ox_temp_k", 293.0).max(50.0);
         (tank_pressure * 0.032 / (8.314462 * storage_t)).max(0.1)
     } else {
         ox_rho_liquid

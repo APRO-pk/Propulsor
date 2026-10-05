@@ -89,11 +89,14 @@ pub fn resolve(design: &mut EngineDesign) -> Result<(), EngineError> {
                 Err(e) => (SolveStatus::Failed, None, Some(e.to_string())),
             },
             Tier::L1 => {
+                let (fuel_temp_k, ox_temp_k) = design::reactant_temps(design);
                 let input = thermo::ThermoInput {
                     of_ratio: design.operating_point.mixture_ratio.as_f64(),
                     chamber_pressure_pa: design.operating_point.chamber_pressure.as_si(),
                     propellant_pair: design.propellant.pair,
                     method: thermo::ThermoMethod::GibbsFreeEnergy,
+                    fuel_temp_k,
+                    ox_temp_k,
                 };
                 match thermo::solve(&input) {
                     Ok(r1) => {
@@ -234,6 +237,10 @@ fn l3_input(design: &EngineDesign) -> Result<cooling::L3Input, EngineError> {
         coolant_gap_m: l0.cooling_gap.as_si(),
         // User-settable coolant conditions (persisted cooling.* params).
         coolant_velocity_m_s: design.param("cooling.coolant_velocity_m_s", 6.0).max(0.5),
+        // Discrete cooling-channel geometry (0 channels → annular-gap model).
+        channel_count: design.param("cooling.channel_count", 0.0).max(0.0),
+        channel_width_m: design.param("cooling.channel_width_mm", 1.5).max(0.1) * 1e-3,
+        channel_height_m: design.param("cooling.channel_height_mm", 3.0).max(0.1) * 1e-3,
         coolant_pressure_pa: design.param("cooling.coolant_pressure_bar", 3.0).max(0.5) * 1e5,
         film_cooling: None,
     })
@@ -346,12 +353,15 @@ pub fn steady_state_map(
     let mut isp_matrix = Vec::with_capacity(of_steps);
     let mut thrust_matrix = Vec::with_capacity(of_steps);
 
+    let (fuel_temp_k, ox_temp_k) = design::reactant_temps(design);
     for &of in &of_axis {
         let thermo = thermo::solve(&thermo::ThermoInput {
             of_ratio: of,
             chamber_pressure_pa: pc,
             propellant_pair: pair,
             method: thermo::ThermoMethod::GibbsFreeEnergy,
+            fuel_temp_k,
+            ox_temp_k,
         })?;
         let mut isp_row = Vec::with_capacity(alt_steps);
         let mut thrust_row = Vec::with_capacity(alt_steps);
@@ -403,11 +413,14 @@ pub fn optimal_expansion(
 ) -> Result<(f64, f64, f64), EngineError> {
     let pc = design.operating_point.chamber_pressure.as_si();
     let pa = ambient_pressure(altitude_m);
+    let (fuel_temp_k, ox_temp_k) = design::reactant_temps(design);
     let thermo = thermo::solve(&thermo::ThermoInput {
         of_ratio: design.operating_point.mixture_ratio.as_f64(),
         chamber_pressure_pa: pc,
         propellant_pair: design.propellant.pair,
         method: thermo::ThermoMethod::GibbsFreeEnergy,
+        fuel_temp_k,
+        ox_temp_k,
     })?;
 
     let mut best = (1.0f64, 0.0f64, 0.0f64);

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useEngineStore } from "./store";
 import { designAdvice, coolingStudy, turbopumpStudy, type DesignAdviceDto, type CoolingStudyDto, type TurbopumpStudyDto } from "./api";
 import { downloadText } from "./Cooling";
-import { CommitNumberField, ParamChoice } from "./ParamInput";
+import { CommitNumberField, ParamChoice, ParamField } from "./ParamInput";
 import { engineProfile } from "./exporters";
 
 // Approximate stoichiometric O/F per pair, for equivalence-ratio / %-fuel input.
@@ -203,6 +203,17 @@ export function DesignWizard() {
               <span>Target burnout altitude (km)</span>
               <input type="number" step={5} value={burnoutKm} onChange={(e) => setBurnoutKm(Number(e.target.value))} />
             </label>
+            {pairSet && (
+              <>
+                <hr style={{ border: "none", borderTop: "1px solid #e2e2e6", margin: "8px 0" }} />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+                  <ParamField label="Fuel inlet temp" k="reactant.fuel_temp_k" def={298} step={5} unit="K" hint="cryogenic inlets (e.g. LH₂ ~20 K) lower the flame temperature" />
+                  <ParamField label="Oxidizer inlet temp" k="reactant.ox_temp_k" def={298} step={5} unit="K" hint="e.g. LOX ~90 K" />
+                  <ParamChoice label="Fuel state" k="reactant.fuel_state" def="liquid" options={["liquid", "gas"]} />
+                  <ParamChoice label="Oxidizer state" k="reactant.ox_state" def={(pair as string).startsWith("Gox") ? "gas" : "liquid"} options={["liquid", "gas"]} />
+                </div>
+              </>
+            )}
             {!configured ? (
               <p className="muted">Enter thrust, chamber pressure, mixture ratio and a propellant to build the engine — nothing is pre-computed.</p>
             ) : (

@@ -15,6 +15,8 @@ fn lox_methane_equilibrium_ballpark() {
         chamber_pressure_pa: 3.0e6,
         propellant_pair: PropellantPair::LoxMethane,
         method: ThermoMethod::GibbsFreeEnergy,
+        fuel_temp_k: 298.15,
+        ox_temp_k: 298.15,
     })
     .expect("L1 solve");
 
@@ -49,6 +51,8 @@ fn gasoline_composition_is_physical() {
         chamber_pressure_pa: 2.0684e6,
         propellant_pair: PropellantPair::GoxGasoline,
         method: ThermoMethod::GibbsFreeEnergy,
+        fuel_temp_k: 298.15,
+        ox_temp_k: 298.15,
     })
     .expect("L1 solve");
 
@@ -78,6 +82,8 @@ fn converges_for_every_seeded_pair() {
             chamber_pressure_pa: 3.0e6,
             propellant_pair: pair,
             method: ThermoMethod::GibbsFreeEnergy,
+            fuel_temp_k: 298.15,
+            ox_temp_k: 298.15,
         })
         .unwrap_or_else(|e| panic!("L1 failed for {pair:?}: {e}"));
         assert!(
@@ -99,6 +105,8 @@ fn nitrous_propane_is_physical_and_nitrogen_bearing() {
         chamber_pressure_pa: 3.0e6,
         propellant_pair: PropellantPair::NitrousPropane,
         method: ThermoMethod::GibbsFreeEnergy,
+        fuel_temp_k: 298.15,
+        ox_temp_k: 298.15,
     })
     .expect("L1 solve");
 
@@ -117,6 +125,8 @@ fn cea_cross_validation_lox_rp1() {
         chamber_pressure_pa: 6.9e6,
         propellant_pair: PropellantPair::LoxRp1,
         method: ThermoMethod::GibbsFreeEnergy,
+        fuel_temp_k: 298.15,
+        ox_temp_k: 298.15,
     })
     .expect("L1 solve");
     assert!((3350.0..=3800.0).contains(&r.tc_k), "Tc = {} K (CEA ~3600)", r.tc_k);

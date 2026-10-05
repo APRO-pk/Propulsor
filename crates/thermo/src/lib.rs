@@ -28,6 +28,17 @@ pub struct ThermoInput {
     pub chamber_pressure_pa: f64,
     pub propellant_pair: engine_core::PropellantPair,
     pub method: ThermoMethod,
+    /// Fuel inlet (reactant) temperature, K. Below 298.15 (e.g. cryogenic) lowers
+    /// the flame temperature via the reactant sensible-enthalpy term.
+    #[serde(default = "default_reactant_temp")]
+    pub fuel_temp_k: f64,
+    /// Oxidizer inlet (reactant) temperature, K.
+    #[serde(default = "default_reactant_temp")]
+    pub ox_temp_k: f64,
+}
+
+fn default_reactant_temp() -> f64 {
+    298.15
 }
 
 /// L1 result: real equilibrium combustion properties.
@@ -61,6 +72,8 @@ pub fn optimal_of(propellant_pair: engine_core::PropellantPair, pc_pa: f64) -> (
             chamber_pressure_pa: pc_pa,
             propellant_pair,
             method: ThermoMethod::GibbsFreeEnergy,
+            fuel_temp_k: default_reactant_temp(),
+            ox_temp_k: default_reactant_temp(),
         });
         if let Ok(r) = r {
             if r.isp_vacuum_s > best.1 {
@@ -86,7 +99,7 @@ pub fn solve(input: &ThermoInput) -> EngineResult<ThermoResult> {
     let ox = flame::oxidizer_for(pair);
     let species = species_set(pair);
 
-    let tc = flame::adiabatic_tc(species, &fuel, &ox, input.of_ratio, input.chamber_pressure_pa)?;
+    let tc = flame::adiabatic_tc(species, &fuel, &ox, input.of_ratio, input.chamber_pressure_pa, input.fuel_temp_k, input.ox_temp_k)?;
     let b = flame::element_amounts(&fuel, &ox, input.of_ratio);
     let n = equilibrium::equilibrium(species, &b, tc, input.chamber_pressure_pa)?;
 

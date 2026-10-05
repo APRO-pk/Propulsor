@@ -1058,9 +1058,11 @@ function mockFeed(burn: number, feedType: string): FeedStudyDto {
   const reqTank = pc + injDp + lineDp;
   const pumpfedTank = pval("feed.pumpfed_tank_bar", 3.0) * 1e5;
   const tankP = feed === "self-pressurizing" ? vapor ?? reqTank : feed === "pump-fed" ? pumpfedTank : reqTank;
-  // Gaseous oxidizer (GOX): tank density from the ideal-gas law at tank pressure.
+  // Oxidizer state (choice overrides the propellant default): gas → ideal-gas
+  // density at tank pressure/temperature; liquid → bulk density.
   const isGox = ["GoxKerosene", "GoxGasoline", "GoxEthanol", "GoxMethanol"].includes(pair);
-  const oxRhoEff = isGox ? Math.max((tankP * 0.032) / (8.314462 * 293), 0.1) : oxRho;
+  const oxGas = pchoice("reactant.ox_state", isGox ? "gas" : "liquid").toLowerCase().includes("gas");
+  const oxRhoEff = oxGas ? Math.max((tankP * 0.032) / (8.314462 * Math.max(50, pval("reactant.ox_temp_k", 293))), 0.1) : oxRho;
   const ox = sizeTank("oxidizer", oxMass, oxRhoEff, tankP);
   const fu = sizeTank("fuel", fuMass, fuRho, tankP);
   let pressurant = null;
@@ -1331,7 +1333,11 @@ function mockResolve() {
   const of = d.operating_point.mixture_ratio;
   const g0 = 9.80665;
   const props = mockProps();
-  const cstar = cstarOf(props);
+  // Reactant-temperature effect: cryogenic inlets lower Tc (and c* ∝ √Tc).
+  const fuelTemp = pval("reactant.fuel_temp_k", 298.15);
+  const oxTemp = pval("reactant.ox_temp_k", 298.15);
+  const tcEff = Math.max(500, props.tc + 0.15 * ((fuelTemp - 298.15) + (oxTemp - 298.15)));
+  const cstar = cstarOf(props) * Math.sqrt(tcEff / props.tc);
   const mdot = thrust / (props.ispSea * g0);
   // O/F split: ox = total·O/F/(1+O/F); NOT a fixed 70/30.
   const oxFlow = of > 0 ? (mdot * of) / (1 + of) : mdot * 0.7;
@@ -1363,7 +1369,7 @@ function mockResolve() {
   const wallThickness = Math.max((pc * (chamberD / 2)) / 55e6, 5e-4);
   const l0: L0ResultDto = {
     total_flow: mdot, oxidizer_flow: oxFlow, fuel_flow: fuelFlow, isp_s: props.ispSea, c_star_m_s: cstar,
-    tc_k: props.tc, gamma: props.gamma, throat_area: throatArea, throat_diameter: throatD, exit_area: throatArea * eps,
+    tc_k: tcEff, gamma: props.gamma, throat_area: throatArea, throat_diameter: throatD, exit_area: throatArea * eps,
     exit_diameter: exitD, area_ratio: eps, chamber_volume: chamberVol, chamber_length: chamberLen,
     chamber_diameter: chamberD, wall_thickness: wallThickness, cooling_gap: 0.003,
   };
@@ -1377,12 +1383,12 @@ function mockResolve() {
   // Equilibrium (shifting) flow gains a few % Isp over frozen (mirrors the Rust l2_input).
   const flowBonus = pchoice("thermo.flow_model", "equilibrium") === "frozen" ? 1 : 1 + 0.035 * Math.min(1.3, Math.max(0, (props.tc - 2500) / 1200));
   const l1: L1ResultDto = {
-    tc_k: props.tc, gamma: gam, mean_molecular_weight: mw, c_star_m_s: cstar, isp_vacuum_s: props.ispSea + 40,
+    tc_k: tcEff, gamma: gam, mean_molecular_weight: mw, c_star_m_s: cstar, isp_vacuum_s: props.ispSea + 40,
     species_mol: [["CO2", 0.19], ["H2O", 0.31], ["CO", 0.22], ["OH", 0.05], ["H2", 0.09], ["O2", 0.04], ["N2", 0.1]],
   };
   const l2: L2ResultDto = {
     area_ratio: eps, exit_mach: me, exit_pressure_pa: Math.max(1000, pe),
-    exit_temperature_k: props.tc / (1 + ((gam - 1) / 2) * me * me), exit_diameter_m: exitD, throat_diameter_m: throatD,
+    exit_temperature_k: tcEff / (1 + ((gam - 1) / 2) * me * me), exit_diameter_m: exitD, throat_diameter_m: throatD,
     divergence_correction: kind === "Bell" ? 0.5 * (1 + Math.cos((thetaE * Math.PI) / 180)) : 0.983, boundary_layer_correction: 0.985,
     isp_s: (cstar * cfVac / g0) * effScale * flowBonus, c_star_m_s: cstar * effScale, stations,
     bell_theta_n_deg: kind === "Bell" ? thetaN : 0, bell_theta_e_deg: kind === "Bell" ? thetaE : 0,
@@ -1449,9 +1455,17 @@ function chamberTc(): number {
 }
 function mockFilm() {
   // Effectiveness rises with coolant velocity/slot; wall temp drops accordingly.
-  const vel = pval("cooling.film_coolant_velocity", 120);
   const slot = pval("cooling.film_slot_height_mm", 1.5);
   const tCool = pval("cooling.film_coolant_temp_k", 400);
+  // Film velocity: direct value, or derived from a film-cooling mass fraction.
+  const frac = Math.min(0.3, Math.max(0, pval("cooling.film_fraction", 0)));
+  let vel = pval("cooling.film_coolant_velocity", 120);
+  if (frac > 0) {
+    const l0 = liveDesign.caches.find((c) => c.tier === "L0")?.payload as L0ResultDto | undefined;
+    const dens = Math.max(0.1, pval("cooling.film_coolant_density", 5));
+    const aSlot = Math.PI * (l0?.chamber_diameter ?? 0.1) * (slot / 1000);
+    vel = Math.min(2000, Math.max(1, (frac * (l0?.total_flow ?? 1)) / (dens * aSlot)));
+  }
   const tc = chamberTc();
   const blowing = Math.min(0.6, 0.16 * (vel / 120) * (slot / 1.5) * (5 / pval("cooling.film_coolant_density", 5)));
   const eff = Math.min(0.85, 0.29 * (1 + 0.6 * (blowing / 0.16 - 1)));
@@ -1489,9 +1503,19 @@ function mockCooling(material: string, method: string): CoolingStudyDto {
   // Coolant conditions (user params, mirror the Rust L3 inputs).
   const coolantVel = pval("cooling.coolant_velocity_m_s", 6);
   const coolantPBar = pval("cooling.coolant_pressure_bar", 3);
+  // Discrete cooling channels (smaller hydraulic diameter → better coolant-side h
+  // → cooler wall) vs the annular-gap fallback.
+  const chCount = pval("cooling.channel_count", 0);
+  let chFactor = 1;
+  if (chCount > 0) {
+    const w = Math.max(0.1, pval("cooling.channel_width_mm", 1.5)) / 1000;
+    const h = Math.max(0.1, pval("cooling.channel_height_mm", 3.0)) / 1000;
+    const dh = (2 * w * h) / (w + h);
+    chFactor = Math.pow(dh / 0.004, 0.15); // < 1 for tight channels
+  }
   // Peak wall temperature: lower conductivity → hotter, hotter at higher Pc, and
-  // cooler as coolant velocity rises (higher coolant-side h).
-  const wall = (620 + 9000 / m.thermal_conductivity_w_m_k) * Math.pow(pc / 2e6, 0.15) * Math.pow(6 / Math.max(coolantVel, 0.5), 0.2);
+  // cooler as coolant velocity rises or channels tighten (higher coolant-side h).
+  const wall = (620 + 9000 / m.thermal_conductivity_w_m_k) * Math.pow(pc / 2e6, 0.15) * Math.pow(6 / Math.max(coolantVel, 0.5), 0.2) * chFactor;
   // Boiling margin grows with coolant pressure (higher saturation temp) and
   // velocity (cooler wall-side coolant).
   const boilMargin = 40 + 28 * (coolantPBar - 3) + 6 * (coolantVel - 6);
