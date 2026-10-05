@@ -82,10 +82,10 @@ export function Cooling() {
         {material === "Custom" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px", borderTop: "1px solid var(--qt-border)", borderBottom: "1px solid var(--qt-border)", padding: "4px 0", margin: "4px 0" }}>
             <ParamField label="Conductivity k" k="material.custom_k" def={350} step={10} unit="W/m·K" />
-            <ParamField label="Max service temp" k="material.custom_tmax_k" def={800} step={25} unit="K" />
+            <ParamField label="Max service temp" k="material.custom_tmax_k" def={800} step={25} dim="temperature" baseUnit="K" />
             <ParamField label="Density" k="material.custom_density" def={8000} step={100} unit="kg/m³" />
-            <ParamField label="Allowable stress" k="material.custom_allowable_mpa" def={200} step={10} unit="MPa" />
-            <ParamField label="Young's modulus" k="material.custom_youngs_gpa" def={120} step={5} unit="GPa" />
+            <ParamField label="Allowable stress" k="material.custom_allowable_mpa" def={200} step={10} dim="pressure" baseUnit="MPa" />
+            <ParamField label="Young's modulus" k="material.custom_youngs_gpa" def={120} step={5} dim="pressure" baseUnit="GPa" />
             <ParamField label="CTE" k="material.custom_cte_ppm" def={16} step={1} unit="ppm/K" />
             <ParamField label="Emissivity" k="material.custom_emissivity" def={0.5} step={0.05} />
           </div>
@@ -101,11 +101,11 @@ export function Cooling() {
             ))}
           </select>
         </label>
-        <ParamField label="Coolant velocity" k="cooling.coolant_velocity_m_s" def={6} step={1} unit="m/s" hint="regen jacket bulk velocity — higher lowers the wall temperature" />
-        <ParamField label="Coolant pressure" k="cooling.coolant_pressure_bar" def={3} step={0.5} unit="bar" hint="coolant inlet pressure — sets the boiling margin" />
+        <ParamField label="Coolant velocity" k="cooling.coolant_velocity_m_s" def={6} step={1} dim="velocity" baseUnit="m/s" hint="regen jacket bulk velocity — higher lowers the wall temperature" />
+        <ParamField label="Coolant pressure" k="cooling.coolant_pressure_bar" def={3} step={0.5} dim="pressure" baseUnit="bar" hint="coolant inlet pressure — sets the boiling margin" />
         <ParamField label="Cooling channels" k="cooling.channel_count" def={0} step={10} hint="discrete milled/printed channels; 0 → annular-gap model" />
-        <ParamField label="Channel width" k="cooling.channel_width_mm" def={1.5} step={0.1} unit="mm" hint="rectangular channel width (used when channels > 0)" />
-        <ParamField label="Channel height" k="cooling.channel_height_mm" def={3.0} step={0.1} unit="mm" hint="rectangular channel depth (used when channels > 0)" />
+        <ParamField label="Channel width" k="cooling.channel_width_mm" def={1.5} step={0.1} dim="length" baseUnit="mm" hint="rectangular channel width (used when channels > 0)" />
+        <ParamField label="Channel height" k="cooling.channel_height_mm" def={3.0} step={0.1} dim="length" baseUnit="mm" hint="rectangular channel depth (used when channels > 0)" />
         {study && (
           <>
             <div className="qt-field">
@@ -143,18 +143,18 @@ export function Cooling() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "0 16px" }}>
             {method === "film" && <>
               <ParamField label="Film fraction" k="cooling.film_fraction" def={0} step={0.01} hint="fraction of total flow bled as film coolant; >0 sets the film velocity (0 = use velocity below)" />
-              <ParamField label="Coolant temperature" k="cooling.film_coolant_temp_k" def={400} step={25} unit="K" />
+              <ParamField label="Coolant temperature" k="cooling.film_coolant_temp_k" def={400} step={25} dim="temperature" baseUnit="K" />
               <ParamField label="Coolant density" k="cooling.film_coolant_density" def={5} step={0.5} unit="kg/m³" />
-              <ParamField label="Coolant velocity" k="cooling.film_coolant_velocity" def={120} step={10} unit="m/s" hint="used when film fraction = 0; higher velocity → thicker film" />
-              <ParamField label="Slot height" k="cooling.film_slot_height_mm" def={1.5} step={0.1} unit="mm" />
-              <ParamField label="Injection x" k="cooling.film_injection_x_m" def={0} step={0.01} unit="m" hint="axial start of the film" />
+              <ParamField label="Coolant velocity" k="cooling.film_coolant_velocity" def={120} step={10} dim="velocity" baseUnit="m/s" hint="used when film fraction = 0; higher velocity → thicker film" />
+              <ParamField label="Slot height" k="cooling.film_slot_height_mm" def={1.5} step={0.1} dim="length" baseUnit="mm" />
+              <ParamField label="Injection x" k="cooling.film_injection_x_m" def={0} step={0.01} dim="length" baseUnit="m" hint="axial start of the film" />
             </>}
             {method === "ablative" && <>
               <ParamChoice label="Ablative material" k="cooling.ablative_material" def="Carbon phenolic" options={["Carbon phenolic", "Silica phenolic"]} />
-              <ParamField label="Burn time" k="cooling.ablative_burn_time_s" def={30} step={5} unit="s" />
+              <ParamField label="Burn time" k="cooling.ablative_burn_time_s" def={30} step={5} dim="time" baseUnit="s" />
               <ParamField label="Safety factor" k="cooling.ablative_safety_factor" def={1.5} step={0.1} />
             </>}
-            {method === "radiation" && <ParamField label="Ambient temperature" k="cooling.radiation_ambient_k" def={250} step={25} unit="K" />}
+            {method === "radiation" && <ParamField label="Ambient temperature" k="cooling.radiation_ambient_k" def={250} step={25} dim="temperature" baseUnit="K" />}
           </div>
         </fieldset>
       )}

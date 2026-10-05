@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useEngineStore } from "./store";
 import { designAdvice, coolingStudy, turbopumpStudy, type DesignAdviceDto, type CoolingStudyDto, type TurbopumpStudyDto } from "./api";
 import { downloadText } from "./Cooling";
-import { CommitNumberField, ParamChoice, ParamField } from "./ParamInput";
+import { CommitNumberField, ParamChoice, ParamField, UnitNumberField } from "./ParamInput";
 import { engineProfile } from "./exporters";
 
 // Approximate stoichiometric O/F per pair, for equivalence-ratio / %-fuel input.
@@ -217,12 +217,12 @@ export function DesignWizard() {
               </select>
             </label>
             <label className="qt-field">
-              <span>Thrust (N)</span>
-              <CommitNumberField value={curThrust} step={100} placeholder="e.g. 5000" emptyWhenZero min={1} onCommit={(n) => store.apply("thrust", n)} />
+              <span>Thrust</span>
+              <UnitNumberField value={curThrust} dim="force" unitKey="thrust" defUnit="N" step={100} placeholder="e.g. 5000" emptyWhenZero min={1} onCommit={(n) => store.apply("thrust", n)} />
             </label>
             <label className="qt-field">
-              <span>Chamber pressure (bar)</span>
-              <CommitNumberField value={curPcBar} step={1} placeholder="e.g. 20" emptyWhenZero displayDecimals={2} min={0.1} onCommit={(n) => store.apply("chamber_pressure", n * 1e5)} />
+              <span>Chamber pressure</span>
+              <UnitNumberField value={design?.operating_point.chamber_pressure ?? 0} dim="pressure" unitKey="chamber_pressure" defUnit="bar" step={1} placeholder="e.g. 20" emptyWhenZero min={1e4} onCommit={(n) => store.apply("chamber_pressure", n)} />
             </label>
             <label className="qt-field">
               <span>
@@ -243,8 +243,8 @@ export function DesignWizard() {
               <>
                 <hr style={{ border: "none", borderTop: "1px solid #e2e2e6", margin: "8px 0" }} />
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
-                  <ParamField label="Fuel inlet temp" k="reactant.fuel_temp_k" def={298} step={5} unit="K" hint="cryogenic inlets (e.g. LH₂ ~20 K) lower the flame temperature" />
-                  <ParamField label="Oxidizer inlet temp" k="reactant.ox_temp_k" def={298} step={5} unit="K" hint="e.g. LOX ~90 K" />
+                  <ParamField label="Fuel inlet temp" k="reactant.fuel_temp_k" def={298} step={5} dim="temperature" baseUnit="K" hint="cryogenic inlets (e.g. LH₂ ~20 K) lower the flame temperature" />
+                  <ParamField label="Oxidizer inlet temp" k="reactant.ox_temp_k" def={298} step={5} dim="temperature" baseUnit="K" hint="e.g. LOX ~90 K" />
                   <ParamChoice label="Fuel state" k="reactant.fuel_state" def="liquid" options={["liquid", "gas"]} />
                   <ParamChoice label="Oxidizer state" k="reactant.ox_state" def={(pair as string).startsWith("Gox") ? "gas" : "liquid"} options={["liquid", "gas"]} />
                 </div>
@@ -270,8 +270,8 @@ export function DesignWizard() {
             <button className="qt-tool" disabled={!advice} onClick={() => advice && store.apply("of_ratio", Number(advice.optimal_of.toFixed(2)))}>Use optimal O/F</button>
             <hr style={{ border: "none", borderTop: "1px solid #e2e2e6", margin: "10px 0" }} />
             <label className="qt-field">
-              <span>Characteristic length L* (m)</span>
-              <CommitNumberField value={curLStar} step={0.05} displayDecimals={2} min={0.05} max={5} onCommit={(n) => store.apply("l_star", n)} />
+              <span>Characteristic length L*</span>
+              <UnitNumberField value={curLStar} dim="length" unitKey="l_star" defUnit="m" step={0.05} min={0.05} max={5} onCommit={(n) => store.apply("l_star", n)} />
             </label>
             <div className="qt-field"><span>Recommended L* for this pair</span><b>{advice ? `${advice.recommended_l_star_m.toFixed(2)} m` : "…"}</b></div>
             <button className="qt-tool" disabled={!advice} onClick={() => advice && store.apply("l_star", Number(advice.recommended_l_star_m.toFixed(2)))}>Use recommended L*</button>
@@ -306,8 +306,8 @@ export function DesignWizard() {
             )}
             {l2 && (
               <label className="qt-field" title="Perfectly expand to this exit pressure (overrides the strategy above)">
-                <span>Or set exit pressure (bar)</span>
-                <CommitNumberField value={+(l2.exit_pressure_pa / 1e5).toFixed(3)} step={0.1} onCommit={(n) => n > 0 && store.apply("exit_pressure_bar", n)} />
+                <span>Or set exit pressure</span>
+                <UnitNumberField value={l2.exit_pressure_pa} dim="pressure" unitKey="exit_pressure" defUnit="bar" step={0.1} onCommit={(n) => n > 0 && store.apply("exit_pressure_bar", n / 1e5)} />
               </label>
             )}
             <div className="qt-field"><span>Design expansion ratio (solved)</span><b>ε = {curEps.toFixed(1)}</b></div>
