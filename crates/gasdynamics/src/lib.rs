@@ -41,6 +41,13 @@ pub struct L2Input {
     /// flow). A first-order CEA-style correction, not a full equilibrium expansion.
     #[doc(hidden)]
     pub shifting_bonus: f64,
+    /// Combustor contraction ratio A_chamber/A_throat for the finite-area-combustor
+    /// (FAC) model. A value ≤ 1 selects the default infinite-area combustor (IAC):
+    /// the chamber is treated as stagnant, so the nozzle expands from the full
+    /// chamber pressure with no momentum-pressure loss. A value > 1 computes the
+    /// subsonic chamber Mach number and the Rayleigh-type stagnation-pressure drop
+    /// between the injector face and the nozzle inlet, mirroring CEA's FAC problem.
+    pub contraction_ratio: f64,
 }
 
 /// L2 result.
@@ -63,6 +70,18 @@ pub struct L2Result {
     /// Rao bell exit angle θ_e (deg); 0 for conical.
     #[serde(default)]
     pub bell_theta_e_deg: f64,
+    /// Subsonic combustor Mach number from the finite-area-combustor model; 0 for
+    /// an infinite-area combustor (the chamber is treated as stagnant).
+    #[serde(default)]
+    pub chamber_mach: f64,
+    /// Finite-area-combustor nozzle-stagnation to injector pressure ratio
+    /// (p0_nozzle / p_injector ≤ 1). 1.0 for an infinite-area combustor.
+    #[serde(default = "one")]
+    pub combustor_pressure_ratio: f64,
+}
+
+fn one() -> f64 {
+    1.0
 }
 
 impl L2Result {
@@ -82,7 +101,23 @@ impl L2Result {
 /// Solve the L2 gas-dynamics / contour model.
 pub fn solve_l2(input: &L2Input) -> L2Result {
     let g = input.gamma;
-    let pc = input.pc_pa;
+    let pc_injector = input.pc_pa;
+
+    // Finite-area-combustor (FAC) correction. With a contraction ratio > 1 the
+    // chamber flows at a subsonic Mach number M_c; conserving momentum across the
+    // constant-area combustor (injector face nearly stagnant → nozzle inlet at
+    // M_c) drops the nozzle-inlet stagnation pressure below the injector pressure
+    // by p0/p_inj = 1 / [ (p/p0)(M_c) · (1 + γ M_c²) ]. An infinite-area combustor
+    // (contraction ≤ 1) keeps the full injector pressure (no loss).
+    let (chamber_mach, combustor_pressure_ratio) = if input.contraction_ratio > 1.0 {
+        let mc = quasi1d::subsonic_mach_from_area(input.contraction_ratio, g);
+        let ratio = 1.0 / (quasi1d::pressure_ratio(mc, g) * (1.0 + g * mc * mc));
+        (mc, ratio.min(1.0))
+    } else {
+        (0.0, 1.0)
+    };
+    // Effective nozzle stagnation pressure the expansion runs from.
+    let pc = pc_injector * combustor_pressure_ratio;
 
     // Area ratio from the expansion target.
     let area_ratio = match input.expansion {
@@ -149,6 +184,8 @@ pub fn solve_l2(input: &L2Input) -> L2Result {
         c_star_m_s: c_star_eff,
         bell_theta_n_deg: if input.nozzle_type == NozzleType::Bell { theta_n_deg } else { 0.0 },
         bell_theta_e_deg: if input.nozzle_type == NozzleType::Bell { theta_e_deg } else { 0.0 },
+        chamber_mach,
+        combustor_pressure_ratio,
     }
 }
 
@@ -171,11 +208,55 @@ mod tests {
             c_star_efficiency: 0.95,
             nozzle_type: NozzleType::Bell,
             shifting_bonus: 1.0,
+            contraction_ratio: 0.0,
         };
         let r = solve_l2(&input);
         assert!((3.0..=5.0).contains(&r.area_ratio), "area ratio = {}", r.area_ratio);
         assert!(r.isp_s > 200.0 && r.isp_s < 400.0, "Isp = {}", r.isp_s);
         assert!(r.exit_mach > 1.0);
         assert_eq!(r.stations.len(), 60);
+        // Infinite-area combustor: no momentum-pressure loss.
+        assert_eq!(r.chamber_mach, 0.0);
+        assert_eq!(r.combustor_pressure_ratio, 1.0);
+    }
+
+    #[test]
+    fn finite_area_combustor_drops_stagnation_and_isp() {
+        let base = L2Input {
+            gamma: 1.2,
+            c_star_m_s: 1700.0,
+            tc_k: 3400.0,
+            mw: 22.0,
+            pc_pa: 3.0e6,
+            expansion: ExpansionTarget::Ratio(engine_core::Ratio::new(4.0)),
+            ambient_pressure_pa: Some(101_325.0),
+            throat_area_m2: 2.0e-5,
+            exit_half_angle_deg: 15.0,
+            c_star_efficiency: 0.95,
+            nozzle_type: NozzleType::Bell,
+            shifting_bonus: 1.0,
+            contraction_ratio: 0.0,
+        };
+        let iac = solve_l2(&base);
+        let fac = solve_l2(&L2Input { contraction_ratio: 2.5, ..base.clone() });
+
+        // A tight (2.5) contraction gives a subsonic chamber Mach and a few-percent
+        // stagnation-pressure loss, so delivered Isp is slightly lower than the IAC.
+        assert!(fac.chamber_mach > 0.1 && fac.chamber_mach < 0.5, "M_c = {}", fac.chamber_mach);
+        assert!(
+            fac.combustor_pressure_ratio < 1.0 && fac.combustor_pressure_ratio > 0.9,
+            "p0/pinj = {}",
+            fac.combustor_pressure_ratio
+        );
+        assert!(fac.isp_s < iac.isp_s, "FAC Isp {} should be below IAC {}", fac.isp_s, iac.isp_s);
+
+        // A looser (6) contraction loses less than a tight (2.5) one.
+        let loose = solve_l2(&L2Input { contraction_ratio: 6.0, ..base });
+        assert!(
+            loose.combustor_pressure_ratio > fac.combustor_pressure_ratio,
+            "looser chamber must lose less: {} vs {}",
+            loose.combustor_pressure_ratio,
+            fac.combustor_pressure_ratio
+        );
     }
 }

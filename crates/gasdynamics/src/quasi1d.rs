@@ -30,6 +30,26 @@ pub fn mach_from_area(area_ratio: f64, gamma: f64) -> f64 {
     0.5 * (lo + hi)
 }
 
+/// Subsonic Mach number for a given area ratio A/A* > 1 (constant γ).
+/// Solved by bisection on the subsonic branch (M → 0 as A/A* → ∞, M → 1 as
+/// A/A* → 1). Used for the finite-area-combustor chamber Mach number.
+pub fn subsonic_mach_from_area(area_ratio: f64, gamma: f64) -> f64 {
+    if area_ratio <= 1.0 {
+        return 1.0;
+    }
+    // On the subsonic branch A/A* decreases monotonically with M.
+    let (mut lo, mut hi) = (1e-6, 1.0);
+    for _ in 0..200 {
+        let mid = 0.5 * (lo + hi);
+        if area_ratio_from_mach(mid, gamma) > area_ratio {
+            lo = mid; // area still too large → need a higher Mach
+        } else {
+            hi = mid;
+        }
+    }
+    0.5 * (lo + hi)
+}
+
 /// Pressure ratio P/Pc for a given Mach number (constant γ).
 pub fn pressure_ratio(m: f64, gamma: f64) -> f64 {
     (1.0 + (gamma - 1.0) / 2.0 * m * m).powf(-gamma / (gamma - 1.0))
@@ -65,5 +85,16 @@ mod tests {
     fn throat_is_sonic() {
         // A/A* = 1 must give M = 1.
         assert!((mach_from_area(1.0, 1.2) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn subsonic_root_round_trips_and_is_below_one() {
+        let g = 1.2;
+        // A contraction ratio of 4 is a subsonic chamber: M ≈ 0.15, well below 1.
+        let m = subsonic_mach_from_area(4.0, g);
+        assert!(m > 0.0 && m < 1.0, "subsonic chamber Mach = {m}");
+        assert!((area_ratio_from_mach(m, g) - 4.0).abs() < 1e-4, "round trip: {m}");
+        // Tighter chamber → higher Mach.
+        assert!(subsonic_mach_from_area(2.5, g) > m, "tighter chamber must be faster");
     }
 }

@@ -196,6 +196,15 @@ fn l2_input(design: &EngineDesign) -> Result<gasdynamics::L2Input, EngineError> 
         _ => 1.0 + 0.035 * ((l1.tc_k - 2500.0) / 1200.0).clamp(0.0, 1.3),
     };
 
+    // Combustor model: "infinite" (IAC, the default — stagnant chamber, no loss)
+    // or "finite" (FAC — the contraction ratio drives a subsonic chamber Mach and
+    // a momentum-pressure drop). The contraction ratio defaults to the L0 chamber
+    // value (4.0) and is clamped above 1 so the FAC math is well-posed.
+    let contraction_ratio = match design.choice("thermo.combustor_model", "infinite").as_str() {
+        "finite" => design.param("thermo.contraction_ratio", 4.0).max(1.05),
+        _ => 0.0,
+    };
+
     Ok(gasdynamics::L2Input {
         gamma: l1.gamma,
         c_star_m_s: l1.c_star_m_s,
@@ -212,6 +221,7 @@ fn l2_input(design: &EngineDesign) -> Result<gasdynamics::L2Input, EngineError> 
             _ => gasdynamics::NozzleType::Bell,
         },
         shifting_bonus,
+        contraction_ratio,
     })
 }
 
@@ -380,6 +390,7 @@ pub fn steady_state_map(
                 c_star_efficiency: design.operating_point.c_star_efficiency,
                 nozzle_type: gasdynamics::NozzleType::Bell,
                 shifting_bonus: 1.0,
+                contraction_ratio: 0.0,
             });
             let isp = r2.isp_s;
             isp_row.push(isp);
@@ -438,6 +449,7 @@ pub fn optimal_expansion(
             c_star_efficiency: design.operating_point.c_star_efficiency,
             nozzle_type: gasdynamics::NozzleType::Bell,
             shifting_bonus: 1.0,
+            contraction_ratio: 0.0,
         });
         if l2.isp_s > best.2 {
             best = (ar, l2.exit_pressure_pa, l2.isp_s);

@@ -51,6 +51,8 @@ export interface TierCacheDto {
   inputs_hash: number;
   /** Serialized solver payload (e.g. the L0 analytical result). */
   payload?: L0ResultDto | L1ResultDto | L2ResultDto;
+  /** Error message when the tier failed (used by the debug report). */
+  error?: string;
 }
 
 /** Mirrors `sizing_l0::L0Result`, canonical SI (serde-transparent f64s). */
@@ -106,6 +108,10 @@ export interface L2ResultDto {
   stations?: ContourPointDto[];
   bell_theta_n_deg?: number;
   bell_theta_e_deg?: number;
+  /** Finite-area-combustor subsonic chamber Mach (0 for infinite-area). */
+  chamber_mach?: number;
+  /** FAC nozzle-stagnation / injector pressure ratio (1.0 for infinite-area). */
+  combustor_pressure_ratio?: number;
 }
 
 /** Mirrors `simulate::PerfMap`. */
@@ -1262,6 +1268,28 @@ function machFromAreaMock(ar: number, g: number): number {
   for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (areaOf(mid) > ar) hi = mid; else lo = mid; }
   return (lo + hi) / 2;
 }
+
+/** Subsonic Mach for a contraction ratio A_c/A* > 1 (constant γ), by bisection. */
+function subsonicMachFromAreaMock(ar: number, g: number): number {
+  if (ar <= 1.0001) return 1;
+  const areaOf = (m: number) => (1 / m) * Math.pow(((2 / (g + 1)) * (1 + ((g - 1) / 2) * m * m)), (g + 1) / (2 * (g - 1)));
+  let lo = 1e-6, hi = 1;
+  for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (areaOf(mid) > ar) lo = mid; else hi = mid; }
+  return (lo + hi) / 2;
+}
+
+/**
+ * Finite-area-combustor (FAC) correction (mirrors `gasdynamics::solve_l2`):
+ * returns [chamberMach, p0/pinj]. "infinite" combustor → [0, 1] (no loss).
+ */
+function facCorrection(g: number): [number, number] {
+  if (pchoice("thermo.combustor_model", "infinite") !== "finite") return [0, 1];
+  const eps_c = Math.max(1.05, pval("thermo.contraction_ratio", 4.0));
+  const mc = subsonicMachFromAreaMock(eps_c, g);
+  const pr = Math.pow(1 + ((g - 1) / 2) * mc * mc, -g / (g - 1));
+  const ratio = Math.min(1, 1 / (pr * (1 + g * mc * mc)));
+  return [mc, ratio];
+}
 const liveDesign: EngineDesignDto = {
   meta: { name: "Untitled design", schema_version: 1, revision: 1, unit_system: "Si" },
   // Blank start: no pre-fed engine. The user enters these in the Design tab.
@@ -1377,8 +1405,12 @@ function mockResolve() {
   const gam = props.gamma;
   const mw = 8314.462 / props.r;
   const me = machFromAreaMock(eps, gam); // supersonic exit Mach, consistent with ε
-  const pe = pc * Math.pow(1 + ((gam - 1) / 2) * me * me, -gam / (gam - 1));
-  const cfVac = Math.sqrt(((2 * gam * gam) / (gam - 1)) * Math.pow(2 / (gam + 1), (gam + 1) / (gam - 1)) * (1 - Math.pow(pe / pc, (gam - 1) / gam))) + (eps * pe) / pc;
+  // Finite-area-combustor: drop the nozzle-inlet stagnation pressure below the
+  // injector pressure (contraction-ratio driven); IAC keeps pcEff = pc.
+  const [chamberMach, combustorPr] = facCorrection(gam);
+  const pcEff = pc * combustorPr;
+  const pe = pcEff * Math.pow(1 + ((gam - 1) / 2) * me * me, -gam / (gam - 1));
+  const cfVac = Math.sqrt(((2 * gam * gam) / (gam - 1)) * Math.pow(2 / (gam + 1), (gam + 1) / (gam - 1)) * (1 - Math.pow(pe / pcEff, (gam - 1) / gam))) + (eps * pe) / pcEff;
   const effScale = liveCStarEff / 0.95;
   // Equilibrium (shifting) flow gains a few % Isp over frozen (mirrors the Rust l2_input).
   const flowBonus = pchoice("thermo.flow_model", "equilibrium") === "frozen" ? 1 : 1 + 0.035 * Math.min(1.3, Math.max(0, (props.tc - 2500) / 1200));
@@ -1390,8 +1422,9 @@ function mockResolve() {
     area_ratio: eps, exit_mach: me, exit_pressure_pa: Math.max(1000, pe),
     exit_temperature_k: tcEff / (1 + ((gam - 1) / 2) * me * me), exit_diameter_m: exitD, throat_diameter_m: throatD,
     divergence_correction: kind === "Bell" ? 0.5 * (1 + Math.cos((thetaE * Math.PI) / 180)) : 0.983, boundary_layer_correction: 0.985,
-    isp_s: (cstar * cfVac / g0) * effScale * flowBonus, c_star_m_s: cstar * effScale, stations,
+    isp_s: (cstar * cfVac / g0) * effScale * flowBonus * combustorPr, c_star_m_s: cstar * effScale, stations,
     bell_theta_n_deg: kind === "Bell" ? thetaN : 0, bell_theta_e_deg: kind === "Bell" ? thetaE : 0,
+    chamber_mach: chamberMach, combustor_pressure_ratio: combustorPr,
   };
   d.caches = [
     { tier: "L0", status: "Solved", inputs_hash: 1, payload: l0 },

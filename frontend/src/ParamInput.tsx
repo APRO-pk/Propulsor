@@ -6,7 +6,7 @@ import { useEngineStore } from "./store";
  * Edits commit through `set_field` (on blur / Enter) so they are saved with the
  * design and re-resolve live; the study reads the value with a physical default.
  */
-export function ParamField({ label, k, def, step = 1, unit, hint }: { label: string; k: string; def: number; step?: number; unit?: string; hint?: string }) {
+export function ParamField({ label, k, def, step = 1, unit, hint, min, max }: { label: string; k: string; def: number; step?: number; unit?: string; hint?: string; min?: number; max?: number }) {
   const design = useEngineStore((s) => s.design);
   const apply = useEngineStore((s) => s.apply);
   const stored = design?.params?.[k];
@@ -18,7 +18,11 @@ export function ParamField({ label, k, def, step = 1, unit, hint }: { label: str
   }, [value]);
 
   const commit = () => {
-    const n = Number(text);
+    let n = Number(text);
+    if (!isNaN(n)) {
+      if (min !== undefined && n < min) n = min;
+      if (max !== undefined && n > max) n = max;
+    }
     if (!isNaN(n) && n !== value) void apply(k, n);
     else setText(String(value));
   };
