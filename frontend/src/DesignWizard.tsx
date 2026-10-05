@@ -167,6 +167,46 @@ export function DesignWizard() {
     return L.join("\n");
   };
 
+  // Render the Markdown report as a styled HTML document and open the browser's
+  // print dialog (→ "Save as PDF"). Dependency-free full PDF report (option #18).
+  const printReportPdf = (level: "short" | "long" | "debug") => {
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const md = buildReport(level);
+    const lines = md.split("\n");
+    const html: string[] = [];
+    let inCode = false;
+    for (const raw of lines) {
+      if (raw.trim() === "```json" || raw.trim() === "```") {
+        if (!inCode) { html.push("<pre>"); inCode = true; } else { html.push("</pre>"); inCode = false; }
+        continue;
+      }
+      if (inCode) { html.push(esc(raw)); continue; }
+      if (raw.startsWith("### ")) html.push(`<h3>${esc(raw.slice(4))}</h3>`);
+      else if (raw.startsWith("## ")) html.push(`<h2>${esc(raw.slice(3))}</h2>`);
+      else if (raw.startsWith("# ")) html.push(`<h1>${esc(raw.slice(2))}</h1>`);
+      else if (raw.startsWith("- ")) html.push(`<li>${esc(raw.slice(2))}</li>`);
+      else if (raw.trim() === "") html.push("");
+      else html.push(`<p>${esc(raw.replace(/^_|_$/g, ""))}</p>`);
+    }
+    if (inCode) html.push("</pre>");
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(design?.meta.name ?? "Propulsor design report")}</title>
+<style>
+  body{font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a;max-width:800px;margin:24px auto;padding:0 16px}
+  h1{font-size:22px;border-bottom:2px solid #333;padding-bottom:6px}
+  h2{font-size:16px;margin-top:20px;border-bottom:1px solid #ccc;padding-bottom:3px}
+  h3{font-size:13px;margin-top:14px;color:#444}
+  li{margin:2px 0} p{margin:6px 0}
+  pre{background:#f5f5f5;border:1px solid #ddd;padding:8px;font:11px/1.4 Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+  @media print{body{margin:0}}
+</style></head><body>${html.join("\n")}
+<script>window.onload=function(){window.print();}</script></body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) { window.alert("Pop-up blocked — allow pop-ups to print/save the PDF report."); return; }
+    w.document.open();
+    w.document.write(doc);
+    w.document.close();
+  };
+
   // Full design CSV (one key,value per row) — whole design, not just contour.
   const buildFullCsv = (): string => {
     const rows: [string, string | number][] = [
@@ -305,10 +345,20 @@ export function DesignWizard() {
               <p className="err">⚠ The max-performance nozzle (ε={advice.expansion.optimal_area_ratio.toFixed(0)}) flow-separates at sea level — use the separation-safe ratio for a lift-off nozzle.</p>
             )}
             {l2 && (
-              <label className="qt-field" title="Perfectly expand to this exit pressure (overrides the strategy above)">
-                <span>Or set exit pressure</span>
-                <UnitNumberField value={l2.exit_pressure_pa} dim="pressure" unitKey="exit_pressure" defUnit="bar" step={0.1} hint="nozzle exit pressure for a perfect-expansion design (overrides the strategy)" onCommit={(n) => n > 0 && store.apply("exit_pressure_bar", n / 1e5)} />
-              </label>
+              <>
+                <label className="qt-field" title="Set the exit condition directly by area ratio Aₑ/Aₜ (overrides the strategy above)">
+                  <span>Or set area ratio ε</span>
+                  <CommitNumberField value={+l2.area_ratio.toFixed(2)} step={0.5} min={1.05} hint="nozzle area ratio Aₑ/Aₜ — larger ε expands further (more vacuum Isp)" onCommit={(n) => n > 1 && store.apply("expansion_ratio", n)} />
+                </label>
+                <label className="qt-field" title="Set the exit condition by chamber-to-exit pressure ratio Pc/Pe (overrides the strategy above)">
+                  <span>Or set pressure ratio Pc/Pe</span>
+                  <CommitNumberField value={+(curPcBar * 1e5 / l2.exit_pressure_pa).toFixed(1)} step={1} min={1.1} hint="chamber/exit pressure ratio — perfectly expands to Pe = Pc / (this ratio)" onCommit={(n) => n > 1 && store.apply("exit_pressure_bar", (curPcBar * 1e5 / n) / 1e5)} />
+                </label>
+                <label className="qt-field" title="Perfectly expand to this exit pressure (overrides the strategy above)">
+                  <span>Or set exit pressure</span>
+                  <UnitNumberField value={l2.exit_pressure_pa} dim="pressure" unitKey="exit_pressure" defUnit="bar" step={0.1} hint="nozzle exit pressure for a perfect-expansion design (overrides the strategy)" onCommit={(n) => n > 0 && store.apply("exit_pressure_bar", n / 1e5)} />
+                </label>
+              </>
             )}
             <div className="qt-field"><span>Design expansion ratio (solved)</span><b>ε = {curEps.toFixed(1)}</b></div>
             <div className="qt-field"><span>Exit pressure (solved)</span><b>{l2 ? `${(l2.exit_pressure_pa / 1e5).toFixed(3)} bar` : "—"}</b></div>
@@ -419,7 +469,8 @@ export function DesignWizard() {
               <ParamChoice label="Output detail" k="output.detail_level" def="long" options={["short", "long", "debug"]} hint="short = requirements + performance summary; long = every tier + species; debug = long + correction factors and raw tier payloads" />
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-              <button className="qt-tool" onClick={() => downloadText(`${(design?.meta.name || "propulsor").replace(/\s+/g, "_")}_report.md`, buildReport((design?.choices?.["output.detail_level"] as "short" | "long" | "debug") ?? "long"))} disabled={!l0}>Download report (Markdown)</button>
+              <button className="qt-tool" onClick={() => printReportPdf((design?.choices?.["output.detail_level"] as "short" | "long" | "debug") ?? "long")} disabled={!l0}>Report (PDF)</button>
+              <button className="qt-tool" onClick={() => downloadText(`${(design?.meta.name || "propulsor").replace(/\s+/g, "_")}_report.md`, buildReport((design?.choices?.["output.detail_level"] as "short" | "long" | "debug") ?? "long"))} disabled={!l0}>Report (Markdown)</button>
               <button className="qt-tool" onClick={() => downloadText(`${(design?.meta.name || "propulsor").replace(/\s+/g, "_")}_design.csv`, buildFullCsv())} disabled={!l0}>Full design CSV</button>
               <button className="qt-tool" onClick={exportContourCsv} disabled={!l2?.stations}>Nozzle contour CSV</button>
               <button className="qt-tool" onClick={() => cool && downloadText("heat_flux.csv", cool.heat_flux_csv)} disabled={!cool}>Heat-flux CSV</button>
