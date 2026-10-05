@@ -389,9 +389,18 @@ impl EngineDesign {
                 self.propellant.of_ratio = r;
                 Tier::L0
             }
+            // Expansion feeds L0 (exit area/diameter) as well as the L2 nozzle, so
+            // invalidate from L0 — not L2 — or the exit geometry goes stale.
             "expansion_ratio" => {
                 self.operating_point.expansion = ExpansionTarget::Ratio(Ratio::new(num(&value)?));
-                Tier::L2
+                Tier::L0
+            }
+            "exit_pressure_bar" => {
+                // Perfectly expand to this exit pressure (an ambient-pressure target).
+                let v = num(&value)?;
+                self.operating_point.expansion =
+                    ExpansionTarget::AmbientPressure(Pressure::si((v * 1e5).max(1.0)));
+                Tier::L0
             }
             "c_star_efficiency" => {
                 let v = num(&value)?;

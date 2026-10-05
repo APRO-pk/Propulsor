@@ -257,7 +257,14 @@ export function DesignWizard() {
             {advice?.expansion.separated_at_sea_level && strategy === "performance" && (
               <p className="err">⚠ The max-performance nozzle (ε={advice.expansion.optimal_area_ratio.toFixed(0)}) flow-separates at sea level — use the separation-safe ratio for a lift-off nozzle.</p>
             )}
+            {l2 && (
+              <label className="qt-field" title="Perfectly expand to this exit pressure (overrides the strategy above)">
+                <span>Or set exit pressure (bar)</span>
+                <CommitNumberField value={+(l2.exit_pressure_pa / 1e5).toFixed(3)} step={0.1} onCommit={(n) => n > 0 && store.apply("exit_pressure_bar", n)} />
+              </label>
+            )}
             <div className="qt-field"><span>Design expansion ratio (solved)</span><b>ε = {curEps.toFixed(1)}</b></div>
+            <div className="qt-field"><span>Exit pressure (solved)</span><b>{l2 ? `${(l2.exit_pressure_pa / 1e5).toFixed(3)} bar` : "—"}</b></div>
             <hr style={{ border: "none", borderTop: "1px solid #e2e2e6", margin: "10px 0" }} />
             <ParamChoice label="Nozzle flow model" k="thermo.flow_model" def="equilibrium" options={["equilibrium", "frozen"]} hint="equilibrium (shifting) recombines in the nozzle for a few % more Isp; frozen holds the chamber composition (approximate first-order correction)" />
             <div className="qt-field"><span>Delivered Isp (solved)</span><b>{l2 ? `${l2.isp_s.toFixed(0)} s` : "—"}</b></div>

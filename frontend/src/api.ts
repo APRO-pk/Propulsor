@@ -1201,6 +1201,26 @@ function mockAnalysis(): AnalysisStudyDto {
 // ---- Stateful browser-dev design (mirrors the persistent Tauri app state) ----
 let liveEps = 4.0;
 let liveCStarEff = 0.95;
+let liveExpansionMode: "ratio" | "pressure" = "ratio";
+let liveExitPa = 0;
+
+/** Isentropic area ratio A_e/A_t for perfect expansion from Pc to Pe (constant γ). */
+function areaRatioFromPressure(pc: number, pe: number, g: number): number {
+  const m2 = Math.max(0, (Math.pow(pc / Math.max(pe, 1), (g - 1) / g) - 1) * 2) / (g - 1);
+  const me = Math.sqrt(m2);
+  if (me <= 0) return 1;
+  const k = ((1 + ((g - 1) / 2) * m2) * 2) / (g + 1);
+  return (1 / me) * Math.pow(k, (g + 1) / (2 * (g - 1)));
+}
+
+/** Supersonic Mach for an area ratio A/A* > 1 (constant γ), by bisection. */
+function machFromAreaMock(ar: number, g: number): number {
+  if (ar <= 1.0001) return 1;
+  const areaOf = (m: number) => (1 / m) * Math.pow(((2 / (g + 1)) * (1 + ((g - 1) / 2) * m * m)), (g + 1) / (2 * (g - 1)));
+  let lo = 1, hi = 25;
+  for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (areaOf(mid) > ar) hi = mid; else lo = mid; }
+  return (lo + hi) / 2;
+}
 const liveDesign: EngineDesignDto = {
   meta: { name: "Untitled design", schema_version: 1, revision: 1, unit_system: "Si" },
   // Blank start: no pre-fed engine. The user enters these in the Design tab.
@@ -1244,7 +1264,8 @@ function mockApply(field: string, value: unknown) {
       liveDesign.operating_point.mixture_ratio = num;
       liveDesign.propellant.of_ratio = num;
       break;
-    case "expansion_ratio": liveEps = num; break;
+    case "expansion_ratio": liveEps = num; liveExpansionMode = "ratio"; break;
+    case "exit_pressure_bar": liveExitPa = num * 1e5; liveExpansionMode = "pressure"; break;
     case "c_star_efficiency": liveCStarEff = num; liveDesign.operating_point.c_star_efficiency = num; break;
     case "l_star": liveDesign.geometry!.chamber = { l_star_m: num }; break;
     case "propellant_pair": liveDesign.propellant.pair = txt; break;
@@ -1278,7 +1299,10 @@ function mockResolve() {
   const fuelFlow = mdot - oxFlow;
   const throatArea = (mdot * cstar) / pc;
   const throatD = 2 * Math.sqrt(throatArea / Math.PI);
-  const eps = liveEps;
+  // Expansion from the area-ratio target, or perfect expansion to a set exit pressure.
+  const eps = liveExpansionMode === "pressure" && liveExitPa > 0
+    ? Math.max(1.05, areaRatioFromPressure(pc, liveExitPa, props.gamma))
+    : liveEps;
   const exitD = throatD * Math.sqrt(eps);
   const kind = d.geometry?.nozzle?.kind ?? "Bell";
   const lStar = d.geometry?.chamber?.l_star_m ?? props.lStar;
@@ -1307,7 +1331,7 @@ function mockResolve() {
   // L1 thermochem (mock): γ, Tc, c* from the propellant; MW from R = 8314.462/MW.
   const gam = props.gamma;
   const mw = 8314.462 / props.r;
-  const me = 2.4 + eps * 0.08; // crude supersonic exit Mach vs area ratio
+  const me = machFromAreaMock(eps, gam); // supersonic exit Mach, consistent with ε
   const pe = pc * Math.pow(1 + ((gam - 1) / 2) * me * me, -gam / (gam - 1));
   const cfVac = Math.sqrt(((2 * gam * gam) / (gam - 1)) * Math.pow(2 / (gam + 1), (gam + 1) / (gam - 1)) * (1 - Math.pow(pe / pc, (gam - 1) / gam))) + (eps * pe) / pc;
   const effScale = liveCStarEff / 0.95;
