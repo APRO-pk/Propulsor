@@ -4,15 +4,17 @@
 //!   - Gas-side: **Bartz** convective heat-transfer coefficient.
 //!   - Coolant-side: **Gnielinski** (turbulent) with a Dittus–Boelter fallback.
 //!   - Wall: conduction through the chamber/nozzle wall.
-//!   - Boiling margin vs the coolant saturation temperature.
+//!   - Coolant-side limit margin: saturation when subcritical, the coking /
+//!     decomposition limit when supercritical (see [`coolant`]).
 //!
 //! All inputs are canonical SI. The gas properties (γ, Tc, Pc, c*, MW) come from
-//! L1; the contour `r(x)` from L2; the wall material and coolant gap from L0.
+//! L1; the contour `r(x)` from L2; the coolant mass flow (the fuel flow) from L0.
 
 use engine_core::{ContourPoint, EngineError};
 use gasdynamics::quasi1d::{mach_from_area, pressure_ratio, temperature_ratio};
 
 pub mod ablative;
+pub mod coolant;
 pub mod film;
 pub mod materials;
 pub mod printing;
@@ -36,7 +38,9 @@ pub struct L3Input {
     pub wall_thickness_m: f64,
     /// Coolant gap (annular channel), m — the fallback when no discrete channels.
     pub coolant_gap_m: f64,
-    /// Coolant bulk velocity, m/s.
+    /// Coolant bulk velocity, m/s. With a fixed `coolant_mass_flow_kg_s` and the
+    /// annular-gap model this is the design velocity at the throat and sizes the
+    /// gap; with discrete channels the velocity follows from the channel area.
     pub coolant_velocity_m_s: f64,
     /// Number of discrete milled/printed cooling channels (0 = annular gap model).
     pub channel_count: f64,
@@ -46,6 +50,11 @@ pub struct L3Input {
     pub channel_height_m: f64,
     /// Coolant inlet pressure, Pa.
     pub coolant_pressure_pa: f64,
+    /// Coolant fluid properties and limits.
+    pub coolant: coolant::Coolant,
+    /// Coolant mass flow through the jacket, kg/s (the fuel flow for a fuel-
+    /// cooled engine). 0 → legacy mode: ṁ = ρ·v·A with the given `coolant_gap_m`.
+    pub coolant_mass_flow_kg_s: f64,
     /// Optional wall film cooling injected at a given axial station.
     pub film_cooling: Option<FilmCoolingConfig>,
 }
@@ -96,6 +105,25 @@ pub struct CoolingResult {
     pub min_boiling_margin_k: f64,
     pub coolant_dp_pa: f64,
     pub wall_material_limit_k: f64,
+    /// Coolant name (e.g. "RP-1", "Hydrogen", "Water").
+    #[serde(default)]
+    pub coolant_name: String,
+    /// What bounds the coolant-side wall temperature. When `none`, the boiling
+    /// margins are reported as 0 and carry no meaning.
+    #[serde(default = "default_limit_kind")]
+    pub coolant_limit_kind: coolant::CoolantLimitKind,
+    /// Coolant-side wall-temperature limit, K (None when there is no limit).
+    #[serde(default)]
+    pub coolant_limit_k: Option<f64>,
+    /// Coolant mass flow through the jacket, kg/s.
+    #[serde(default)]
+    pub coolant_mass_flow_kg_s: f64,
+    /// Coolant velocity actually used, m/s.
+    #[serde(default)]
+    pub coolant_velocity_m_s: f64,
+    /// Effective annular gap (or channel hydraulic diameter / 2), m.
+    #[serde(default)]
+    pub coolant_gap_m: f64,
     /// Largest through-wall (hot-wall − cold-wall) temperature drop, K.
     #[serde(default)]
     pub max_wall_dt_k: f64,
@@ -104,9 +132,11 @@ pub struct CoolingResult {
 impl CoolingResult {
     pub fn summary(&self) -> String {
         format!(
-            "T_wall,max={:.0} K (limit {:.0}) | boil_margin,min={:.0} K | coolant_dP={:.0} kPa",
+            "T_wall,max={:.0} K (limit {:.0}) | {} {:?} margin,min={:.0} K | coolant_dP={:.0} kPa",
             self.max_wall_temp_k,
             self.wall_material_limit_k,
+            self.coolant_name,
+            self.coolant_limit_kind,
             self.min_boiling_margin_k,
             self.coolant_dp_pa / 1000.0,
         )
@@ -147,28 +177,45 @@ pub fn solve_l3(input: &L3Input) -> Result<CoolingResult, EngineError> {
     let wall_k = input.wall_material.thermal_conductivity_w_m_k;
     let wall_limit = input.wall_material.max_service_temp_k;
 
-    // Coolant: water by default. Its bulk temperature is *marched* along the
-    // circuit (not pinned at a constant), so it enters cool and heats realistically.
-    let coolant_rho = 1000.0;
-    let coolant_k = 0.6;
-    let coolant_mu = 0.001;
-    let coolant_cp = 4186.0;
-    let coolant_inlet_k = 300.0;
+    // Coolant properties. Its bulk temperature is *marched* along the circuit
+    // (not pinned at a constant), so it enters cool and heats realistically.
+    let cool = &input.coolant;
+    let coolant_rho = cool.density_kg_m3;
+    let coolant_k = cool.conductivity_w_m_k;
+    let coolant_mu = cool.viscosity_pa_s;
+    let coolant_cp = cool.cp_j_kg_k;
+    let coolant_inlet_k = cool.inlet_temp_k;
 
     // Coolant-side geometry: discrete rectangular channels when specified, else the
     // annular gap at the throat. Hydraulic diameter and total flow area set the
     // Reynolds number, coolant-side coefficient and coolant mass flow.
-    let (d_h, channel_area) = if input.channel_count > 0.0 && input.channel_width_m > 0.0 && input.channel_height_m > 0.0 {
+    //
+    // With a fixed coolant mass flow (fuel-cooled), the annular gap is sized so the
+    // flow moves at the design velocity at the throat; discrete channels fix the
+    // area, so the velocity follows from ṁ/(ρ·A).
+    let fixed_flow = input.coolant_mass_flow_kg_s > 0.0;
+    let channels = input.channel_count > 0.0 && input.channel_width_m > 0.0 && input.channel_height_m > 0.0;
+    let annulus_perimeter = std::f64::consts::PI * (2.0 * r_t);
+    let (d_h, channel_area) = if channels {
         let w = input.channel_width_m;
         let h = input.channel_height_m;
         (2.0 * w * h / (w + h), input.channel_count * w * h)
     } else {
-        (2.0 * input.coolant_gap_m, std::f64::consts::PI * (2.0 * r_t) * input.coolant_gap_m)
+        let gap = if fixed_flow {
+            input.coolant_mass_flow_kg_s / (coolant_rho * input.coolant_velocity_m_s.max(0.1) * annulus_perimeter)
+        } else {
+            input.coolant_gap_m
+        };
+        (2.0 * gap, annulus_perimeter * gap)
     };
-    let m_dot_cool = (coolant_rho * input.coolant_velocity_m_s * channel_area).max(1e-4);
-    let re_cool = coolant_rho * input.coolant_velocity_m_s * d_h / coolant_mu;
-    let h_cool = gnielinski(re_cool, 7.0, d_h, coolant_k, coolant_mu, coolant_rho);
-    let t_sat = water_saturation(input.coolant_pressure_pa);
+    let (m_dot_cool, coolant_velocity) = if fixed_flow {
+        (input.coolant_mass_flow_kg_s, input.coolant_mass_flow_kg_s / (coolant_rho * channel_area))
+    } else {
+        ((coolant_rho * input.coolant_velocity_m_s * channel_area).max(1e-4), input.coolant_velocity_m_s)
+    };
+    let re_cool = coolant_rho * coolant_velocity * d_h / coolant_mu;
+    let h_cool = gnielinski(re_cool, cool.prandtl(), d_h, coolant_k, coolant_mu, coolant_rho);
+    let (coolant_limit, limit_kind) = cool.wall_limit(input.coolant_pressure_pa);
 
     // Per-station gas-side properties (static gas temperature, the temperature the
     // wall actually sees after any film, and the Bartz coefficient).
@@ -245,7 +292,8 @@ pub fn solve_l3(input: &L3Input) -> Result<CoolingResult, EngineError> {
         let t_wall = g.t_drive - q_w / g.h_gas;
         // Coolant-side wall-film temperature is the limiting one for boiling.
         let t_cool_wall = t_bulk + q_w / h_cool;
-        let boil_margin = t_sat - t_cool_wall;
+        // Coolant-side margin (0 when the coolant has no limit at this pressure).
+        let boil_margin = coolant_limit.map_or(0.0, |t| t - t_cool_wall);
         max_wall = max_wall.max(t_wall);
         min_boil = min_boil.min(boil_margin);
         max_dt = max_dt.max(t_wall - t_cool_wall);
@@ -257,7 +305,7 @@ pub fn solve_l3(input: &L3Input) -> Result<CoolingResult, EngineError> {
             wall_limit_k: wall_limit,
             coolant_temp_k: t_bulk,
             coolant_pressure_pa: input.coolant_pressure_pa,
-            coolant_velocity_m_s: input.coolant_velocity_m_s,
+            coolant_velocity_m_s: coolant_velocity,
             boiling_margin_k: boil_margin,
             h_gas: g.h_gas,
             heat_flux_w_m2: q_w,
@@ -273,7 +321,7 @@ pub fn solve_l3(input: &L3Input) -> Result<CoolingResult, EngineError> {
         (xmax - xmin).abs().max(d_h)
     };
     let f_darcy = 0.316 / re_cool.max(1.0).powf(0.25);
-    let coolant_dp = f_darcy * (length / d_h) * 0.5 * coolant_rho * input.coolant_velocity_m_s.powi(2);
+    let coolant_dp = f_darcy * (length / d_h) * 0.5 * coolant_rho * coolant_velocity.powi(2);
 
     Ok(CoolingResult {
         stations,
@@ -281,8 +329,18 @@ pub fn solve_l3(input: &L3Input) -> Result<CoolingResult, EngineError> {
         min_boiling_margin_k: min_boil,
         coolant_dp_pa: coolant_dp,
         wall_material_limit_k: wall_limit,
+        coolant_name: cool.name.clone(),
+        coolant_limit_kind: limit_kind,
+        coolant_limit_k: coolant_limit,
+        coolant_mass_flow_kg_s: m_dot_cool,
+        coolant_velocity_m_s: coolant_velocity,
+        coolant_gap_m: d_h / 2.0,
         max_wall_dt_k: max_dt,
     })
+}
+
+fn default_limit_kind() -> coolant::CoolantLimitKind {
+    coolant::CoolantLimitKind::Boiling
 }
 
 /// Effective gas driving temperature at an axial station, reduced by wall film
@@ -360,18 +418,6 @@ fn gnielinski(re: f64, pr: f64, d_h: f64, k: f64, mu: f64, rho: f64) -> f64 {
     nu * k / d_h
 }
 
-/// Water saturation temperature (K) at a pressure via a simple Antoine fit.
-fn water_saturation(p_pa: f64) -> f64 {
-    let p_atm = p_pa / 101_325.0;
-    if p_atm <= 1.0 {
-        return 373.15;
-    }
-    // Antoine (water, K): log10(p_mmHg) = 8.07131 - 1730.63/(233.426+T_C)
-    let p_mmhg = p_pa * 0.00750062;
-    let t_c = 1730.63 / (8.07131 - p_mmhg.log10()) - 233.426;
-    t_c + 273.15
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -396,6 +442,8 @@ mod tests {
             channel_width_m: 0.0,
             channel_height_m: 0.0,
             coolant_pressure_pa: 3.0e5,
+            coolant: coolant::Coolant::water(),
+            coolant_mass_flow_kg_s: 0.0,
             film_cooling: None,
         }
     }
@@ -426,6 +474,25 @@ mod tests {
         }
         let max_dt = r.stations.iter().map(|s| s.wall_temp_k - s.wall_temp_cold_k).fold(0.0, f64::max);
         assert!((r.max_wall_dt_k - max_dt).abs() < 1e-9);
+    }
+
+    #[test]
+    fn fixed_coolant_flow_sizes_the_gap_at_the_design_velocity() {
+        let mut inp = input();
+        inp.coolant = coolant::Coolant::for_fuel(engine_core::PropellantPair::LoxRp1);
+        inp.coolant_mass_flow_kg_s = 2.0;
+        inp.coolant_velocity_m_s = 25.0;
+        let r = solve_l3(&inp).unwrap();
+        assert!((r.coolant_mass_flow_kg_s - 2.0).abs() < 1e-12);
+        assert!((r.coolant_velocity_m_s - 25.0).abs() < 1e-9);
+        let gap = 2.0 / (810.0 * 25.0 * std::f64::consts::PI * 2.0 * inp.throat_radius_m);
+        assert!((r.coolant_gap_m - gap).abs() < 1e-12);
+        // Channels fix the area instead, so the velocity follows from ṁ/(ρ·A).
+        inp.channel_count = 40.0;
+        inp.channel_width_m = 1.0e-3;
+        inp.channel_height_m = 2.0e-3;
+        let r = solve_l3(&inp).unwrap();
+        assert!((r.coolant_velocity_m_s - 2.0 / (810.0 * 40.0 * 2.0e-6)).abs() < 1e-9);
     }
 
     #[test]

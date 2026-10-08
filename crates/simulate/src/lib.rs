@@ -230,6 +230,7 @@ fn l3_input(design: &EngineDesign) -> Result<cooling::L3Input, EngineError> {
     let l0: sizing_l0::L0Result = payload(design, Tier::L0)?;
     let l1: thermo::ThermoResult = payload(design, Tier::L1)?;
     let l2: gasdynamics::L2Result = payload(design, Tier::L2)?;
+    let coolant = design::coolant(design);
 
     Ok(cooling::L3Input {
         stations: l2.stations.clone(),
@@ -246,13 +247,18 @@ fn l3_input(design: &EngineDesign) -> Result<cooling::L3Input, EngineError> {
         // Heat crosses the thin hot-wall liner, not the L0 structural shell.
         wall_thickness_m: design::liner_thickness_m(design),
         coolant_gap_m: l0.cooling_gap.as_si(),
-        // User-settable coolant conditions (persisted cooling.* params).
-        coolant_velocity_m_s: design.param("cooling.coolant_velocity_m_s", 6.0).max(0.5),
+        // User-settable coolant conditions (persisted cooling.* params). The
+        // velocity defaults per coolant (design velocity at the throat).
+        coolant_velocity_m_s: design.param("cooling.coolant_velocity_m_s", coolant.default_velocity_m_s).max(0.5),
         // Discrete cooling-channel geometry (0 channels → annular-gap model).
         channel_count: design.param("cooling.channel_count", 0.0).max(0.0),
         channel_width_m: design.param("cooling.channel_width_mm", 1.5).max(0.1) * 1e-3,
         channel_height_m: design.param("cooling.channel_height_mm", 3.0).max(0.1) * 1e-3,
         coolant_pressure_pa: design::coolant_pressure_pa(design),
+        // A fuel-cooled jacket carries the whole fuel flow; a water jacket keeps
+        // the legacy velocity × L0-gap flow.
+        coolant_mass_flow_kg_s: if coolant.name == "Water" { 0.0 } else { l0.fuel_flow.as_si() },
+        coolant,
         film_cooling: None,
     })
 }
@@ -595,6 +601,35 @@ mod tests {
         resolve(&mut d).unwrap();
         let (l3, _) = l3_l4(&d);
         assert!((l3.stations[0].coolant_pressure_pa - 40e5).abs() < 1.0);
+    }
+
+    #[test]
+    fn regen_is_fuel_cooled_by_default_and_water_on_request() {
+        let mut d = EngineDesign::new("test", "ci");
+        resolve(&mut d).unwrap();
+        let l0: sizing_l0::L0Result = payload(&d, Tier::L0).unwrap();
+        let (l3, _) = l3_l4(&d);
+        let fuel = cooling::coolant::Coolant::for_fuel(d.propellant.pair);
+        assert_eq!(l3.coolant_name, fuel.name);
+        assert!((l3.coolant_mass_flow_kg_s - l0.fuel_flow.as_si()).abs() < 1e-9);
+
+        d.apply_field("cooling.coolant", engine_core::FieldValue::Text("water".into())).unwrap();
+        resolve(&mut d).unwrap();
+        let (l3, _) = l3_l4(&d);
+        assert_eq!(l3.coolant_name, "Water");
+    }
+
+    #[test]
+    fn supercritical_hydrogen_has_no_coolant_side_limit() {
+        let mut d = EngineDesign::new("test", "ci");
+        d.apply_field("propellant_pair", engine_core::FieldValue::Text("LoxHydrogen".into())).unwrap();
+        d.apply_field("mixture_ratio", engine_core::FieldValue::Num(5.5)).unwrap();
+        resolve(&mut d).unwrap();
+        let (l3, _) = l3_l4(&d);
+        assert_eq!(l3.coolant_name, "Hydrogen");
+        assert_eq!(l3.coolant_limit_kind, cooling::coolant::CoolantLimitKind::None);
+        assert!(l3.coolant_limit_k.is_none());
+        assert_eq!(l3.min_boiling_margin_k, 0.0);
     }
 
     #[test]

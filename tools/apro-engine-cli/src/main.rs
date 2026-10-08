@@ -530,6 +530,8 @@ fn cmd_cooling(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         channel_width_m: 0.0015,
         channel_height_m: 0.003,
         coolant_pressure_pa: 5.0e6,
+        coolant: cooling::coolant::Coolant::water(),
+        coolant_mass_flow_kg_s: 0.0,
         film_cooling: None,
     };
     let cu = cooling::solve_l3(&base)?;

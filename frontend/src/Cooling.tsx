@@ -44,6 +44,11 @@ export function Cooling() {
   const setNozzleMat = (m: string) => store.apply("nozzle_material", m);
   // Coolant inlet pressure defaults to 1.5× Pc (mirrors simulate::design::coolant_pressure_pa).
   const coolantPDefBar = Number((1.5 * (store.design?.operating_point.chamber_pressure ?? 0) / 1e5).toFixed(1));
+  // Default design velocity per coolant (mirrors cooling::coolant::Coolant::for_fuel).
+  const pair = store.design?.propellant.pair ?? "";
+  const coolantChoice = store.design?.choices?.["cooling.coolant"] ?? "fuel";
+  const coolantVelDef = coolantChoice === "water" ? 6 : pair === "LoxHydrogen" ? 100 : pair === "LoxMethane" ? 30 : 20;
+  const channelMode = (store.design?.params?.["cooling.channel_count"] ?? 0) > 0;
   const [study, setStudy] = useState<CoolingStudyDto | null>(null);
 
   const rev = store.design?.meta.revision;
@@ -103,7 +108,15 @@ export function Cooling() {
             ))}
           </select>
         </label>
-        <ParamField label="Coolant velocity" k="cooling.coolant_velocity_m_s" def={6} step={1} dim="velocity" baseUnit="m/s" hint="regen jacket bulk velocity — higher lowers the wall temperature" />
+        <ParamChoice label="Coolant" k="cooling.coolant" def="fuel" options={["fuel", "water"]} hint="regen coolant: the engine's fuel (full fuel flow through the jacket) or water for a test-stand jacket" />
+        {channelMode ? (
+          <div className="qt-field" title="with discrete channels the velocity follows from the coolant flow and channel area">
+            <span>Coolant velocity (ṁ / channel area)</span>
+            <b>{study?.regen.coolant_velocity_m_s?.toFixed(1) ?? "—"} m/s</b>
+          </div>
+        ) : (
+          <ParamField label="Coolant velocity" k="cooling.coolant_velocity_m_s" def={coolantVelDef} step={1} dim="velocity" baseUnit="m/s" hint="design coolant velocity at the throat — sizes the jacket gap; higher lowers the wall temperature but raises ΔP" />
+        )}
         <ParamField label="Coolant pressure" k="cooling.coolant_pressure_bar" def={coolantPDefBar} step={0.5} dim="pressure" baseUnit="bar" hint="coolant inlet pressure (default 1.5× chamber pressure) — sets the boiling margin" />
         <ParamField label="Liner thickness" k="cooling.liner_thickness_mm" def={1.0} step={0.1} dim="length" baseUnit="mm" hint="hot-wall liner the heat conducts through (typ. 0.6–1.5 mm) — sets the through-wall ΔT and thermal stress" />
         <ParamField label="Cooling channels" k="cooling.channel_count" def={0} step={10} hint="discrete milled/printed channels; 0 → annular-gap model" />
@@ -129,6 +142,26 @@ export function Cooling() {
               <span>Coolant ΔP</span>
               <b>{(study.regen.coolant_dp_pa / 1000).toFixed(0)} kPa</b>
             </div>
+            {study.regen.coolant_name && (
+              <>
+                <div className="qt-field">
+                  <span>Coolant flow</span>
+                  <b>
+                    {study.regen.coolant_name} · {study.regen.coolant_mass_flow_kg_s?.toFixed(2)} kg/s · gap {((study.regen.coolant_gap_m ?? 0) * 1000).toFixed(2)} mm
+                  </b>
+                </div>
+                <div className="qt-field">
+                  <span>Coolant-side limit</span>
+                  {study.regen.coolant_limit_kind === "none" || study.regen.coolant_limit_k == null ? (
+                    <b>none (supercritical)</b>
+                  ) : (
+                    <span className={`qt-badge ${study.regen.min_boiling_margin_k < 0 ? "failed" : "solved"}`}>
+                      {study.regen.coolant_limit_kind} {study.regen.coolant_limit_k.toFixed(0)} K · margin {study.regen.min_boiling_margin_k.toFixed(0)} K
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
             <button
               className="qt-tool"
               style={{ marginTop: 8 }}

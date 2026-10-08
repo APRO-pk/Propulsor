@@ -164,6 +164,12 @@ export interface CoolingStudyDto {
     wall_material_limit_k: number;
     min_boiling_margin_k: number;
     coolant_dp_pa: number;
+    coolant_name?: string;
+    coolant_limit_kind?: "boiling" | "coking" | "decomposition" | "none";
+    coolant_limit_k?: number | null;
+    coolant_mass_flow_kg_s?: number;
+    coolant_velocity_m_s?: number;
+    coolant_gap_m?: number;
     stations: { x: number; r: number; heat_flux_w_m2: number; wall_temp_k: number }[];
   };
   film?: { blowing_ratio: number; effectiveness: number; adiabatic_wall_temp_k: number; effective_length_m: number } | null;
@@ -1534,7 +1540,9 @@ function mockCooling(material: string, method: string): CoolingStudyDto {
   // Peak (throat) heat flux scales like Bartz q ∝ Pc^0.8; ~30 MW/m² at 20 bar.
   const qThroat = 272 * Math.pow(pc, 0.8);
   // Coolant conditions (user params, mirror the Rust L3 inputs).
-  const coolantVel = pval("cooling.coolant_velocity_m_s", 6);
+  const pairNow = liveDesign.propellant.pair;
+  const velDef = (liveDesign.choices?.["cooling.coolant"] ?? "fuel") === "water" ? 6 : pairNow === "LoxHydrogen" ? 100 : pairNow === "LoxMethane" ? 30 : 20;
+  const coolantVel = pval("cooling.coolant_velocity_m_s", velDef);
   const coolantPBar = pval("cooling.coolant_pressure_bar", (1.5 * pc) / 1e5);
   const linerMm = Math.min(20, Math.max(0.1, pval("cooling.liner_thickness_mm", 1.0)));
   // Discrete cooling channels (smaller hydraulic diameter → better coolant-side h

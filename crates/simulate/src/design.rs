@@ -776,7 +776,25 @@ pub fn collect_issues(design: &mut EngineDesign) -> Result<IssuesReport, EngineE
             ));
         }
         if c.regen.min_boiling_margin_k < 0.0 {
-            add("fail", "Cooling", format!("Coolant boils — boiling margin {:.0} K", c.regen.min_boiling_margin_k));
+            use cooling::coolant::CoolantLimitKind as K;
+            let what = match c.regen.coolant_limit_kind {
+                K::Boiling => "boils",
+                K::Coking => "cokes (coolant-side wall above the coking limit)",
+                K::Decomposition => "decomposes (coolant-side wall above its limit)",
+                K::None => "exceeds its limit",
+            };
+            add("fail", "Cooling", format!(
+                "{} coolant {what} — margin {:.0} K", c.regen.coolant_name, c.regen.min_boiling_margin_k
+            ));
+        }
+        // A fuel-cooled annular jacket sized for a tiny fuel flow ends up with a gap
+        // too fine to make; such engines are usually water-, film-, radiation- or
+        // ablatively cooled, or use discrete channels.
+        if method == "regen" && design.param("cooling.channel_count", 0.0) <= 0.0 && c.regen.coolant_gap_m < 0.3e-3 {
+            add("warn", "Cooling", format!(
+                "Regen gap {:.2} mm is below ~0.3 mm (hard to manufacture) — consider channels, a lower coolant velocity, or another cooling method",
+                c.regen.coolant_gap_m * 1e3
+            ));
         }
         if method == "regen" {
             if let Some(mat) = cooling::materials::by_name(&material) {
@@ -896,6 +914,23 @@ pub fn reactant_temps(design: &EngineDesign) -> (f64, f64) {
 /// of magnitude.
 pub fn liner_thickness_m(design: &EngineDesign) -> f64 {
     design.param("cooling.liner_thickness_mm", 1.0).clamp(0.1, 20.0) * 1e-3
+}
+
+/// Regen coolant: the engine's fuel by default (`cooling.coolant = "fuel"`), or
+/// water for a water-jacketed test-stand engine. `cooling.coolant_limit_k`
+/// overrides the coolant-side coking/decomposition limit.
+pub fn coolant(design: &EngineDesign) -> cooling::coolant::Coolant {
+    let mut c = match design.choice("cooling.coolant", "fuel").as_str() {
+        "water" => cooling::coolant::Coolant::water(),
+        _ => cooling::coolant::Coolant::for_fuel(design.propellant.pair),
+    };
+    if let Some(&t) = design.params.get("cooling.coolant_limit_k") {
+        c.supercritical_limit_k = Some(t.max(1.0));
+        if c.supercritical_limit_kind == cooling::coolant::CoolantLimitKind::None {
+            c.supercritical_limit_kind = cooling::coolant::CoolantLimitKind::Decomposition;
+        }
+    }
+    c
 }
 
 /// Coolant inlet pressure, Pa. Defaults to 1.5× chamber pressure: the coolant must
