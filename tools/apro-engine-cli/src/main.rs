@@ -247,6 +247,8 @@ fn cmd_transient(_opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         chamber_pressure_pa: d.operating_point.chamber_pressure.as_si(),
         propellant_pair: d.propellant.pair,
         method: thermo::ThermoMethod::GibbsFreeEnergy,
+        fuel_temp_k: simulate::design::reactant_temps(&d).0,
+        ox_temp_k: simulate::design::reactant_temps(&d).1,
     })?;
     let pc = d.operating_point.chamber_pressure.as_si();
 
@@ -298,6 +300,8 @@ fn cmd_contour(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         chamber_pressure_pa: d.operating_point.chamber_pressure.as_si(),
         propellant_pair: d.propellant.pair,
         method: thermo::ThermoMethod::GibbsFreeEnergy,
+        fuel_temp_k: simulate::design::reactant_temps(&d).0,
+        ox_temp_k: simulate::design::reactant_temps(&d).1,
     })?;
     let input = gasdynamics::L2Input {
         gamma: l1.gamma,
@@ -311,6 +315,8 @@ fn cmd_contour(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         exit_half_angle_deg: 15.0,
         c_star_efficiency: d.operating_point.c_star_efficiency,
         nozzle_type: gasdynamics::NozzleType::Bell,
+        shifting_bonus: 1.0,
+        contraction_ratio: 0.0,
     };
     let l2 = gasdynamics::solve_l2(&input);
     let csv = export::contour_csv(&l2.stations);
@@ -520,6 +526,9 @@ fn cmd_cooling(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         wall_thickness_m: 0.0015,
         coolant_gap_m: 0.003,
         coolant_velocity_m_s: 20.0,
+        channel_count: 0.0,
+        channel_width_m: 0.0015,
+        channel_height_m: 0.003,
         coolant_pressure_pa: 5.0e6,
         film_cooling: None,
     };
