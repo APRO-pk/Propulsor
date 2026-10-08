@@ -78,6 +78,11 @@ pub struct CoolingStation {
     /// Wall heat flux at this station, W/m².
     #[serde(default)]
     pub heat_flux_w_m2: f64,
+    /// Coolant-side (cold) wall surface temperature, K. The through-wall
+    /// temperature drop `wall_temp_k − wall_temp_cold_k = q·t/k` drives the
+    /// liner's thermal stress.
+    #[serde(default)]
+    pub wall_temp_cold_k: f64,
     /// Film-cooling effectiveness at this station (0 if no film).
     #[serde(default)]
     pub film_effectiveness: f64,
@@ -91,6 +96,9 @@ pub struct CoolingResult {
     pub min_boiling_margin_k: f64,
     pub coolant_dp_pa: f64,
     pub wall_material_limit_k: f64,
+    /// Largest through-wall (hot-wall − cold-wall) temperature drop, K.
+    #[serde(default)]
+    pub max_wall_dt_k: f64,
 }
 
 impl CoolingResult {
@@ -227,6 +235,7 @@ pub fn solve_l3(input: &L3Input) -> Result<CoolingResult, EngineError> {
     let mut stations = Vec::with_capacity(n);
     let mut max_wall = f64::NEG_INFINITY;
     let mut min_boil = f64::INFINITY;
+    let mut max_dt = 0.0_f64;
     for i in 0..n {
         let pt = &input.stations[i];
         let g = &gas[i];
@@ -239,6 +248,7 @@ pub fn solve_l3(input: &L3Input) -> Result<CoolingResult, EngineError> {
         let boil_margin = t_sat - t_cool_wall;
         max_wall = max_wall.max(t_wall);
         min_boil = min_boil.min(boil_margin);
+        max_dt = max_dt.max(t_wall - t_cool_wall);
         stations.push(CoolingStation {
             x: pt.x,
             r: pt.r,
@@ -251,6 +261,7 @@ pub fn solve_l3(input: &L3Input) -> Result<CoolingResult, EngineError> {
             boiling_margin_k: boil_margin,
             h_gas: g.h_gas,
             heat_flux_w_m2: q_w,
+            wall_temp_cold_k: t_cool_wall,
             film_effectiveness: g.film_eff,
         });
     }
@@ -270,6 +281,7 @@ pub fn solve_l3(input: &L3Input) -> Result<CoolingResult, EngineError> {
         min_boiling_margin_k: min_boil,
         coolant_dp_pa: coolant_dp,
         wall_material_limit_k: wall_limit,
+        max_wall_dt_k: max_dt,
     })
 }
 
@@ -397,6 +409,23 @@ mod tests {
             assert!(s.wall_temp_k > 300.0 && s.wall_temp_k < 4000.0);
         }
         assert!(r.max_wall_temp_k.is_finite());
+    }
+
+    #[test]
+    fn through_wall_drop_is_conduction_across_the_liner() {
+        // Hot wall − cold wall must equal q·t/k at every station, and the cold wall
+        // sits between the coolant bulk and the hot wall.
+        let inp = input();
+        let r = solve_l3(&inp).unwrap();
+        let k = inp.wall_material.thermal_conductivity_w_m_k;
+        for s in &r.stations {
+            assert!(s.coolant_temp_k <= s.wall_temp_cold_k && s.wall_temp_cold_k <= s.wall_temp_k);
+            let dt = s.wall_temp_k - s.wall_temp_cold_k;
+            let expected = s.heat_flux_w_m2 * inp.wall_thickness_m / k;
+            assert!((dt - expected).abs() < 1e-6 * expected.max(1.0), "ΔT {dt} vs q·t/k {expected}");
+        }
+        let max_dt = r.stations.iter().map(|s| s.wall_temp_k - s.wall_temp_cold_k).fold(0.0, f64::max);
+        assert!((r.max_wall_dt_k - max_dt).abs() < 1e-9);
     }
 
     #[test]

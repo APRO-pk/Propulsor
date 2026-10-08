@@ -890,6 +890,21 @@ pub fn reactant_temps(design: &EngineDesign) -> (f64, f64) {
     )
 }
 
+/// Hot-wall liner thickness for the regen conduction path, m. This is the thin
+/// inner liner the heat crosses (typically 0.6–1.5 mm), not the L0 structural
+/// shell thickness — using the shell over-predicts the conduction drop by an order
+/// of magnitude.
+pub fn liner_thickness_m(design: &EngineDesign) -> f64 {
+    design.param("cooling.liner_thickness_mm", 1.0).clamp(0.1, 20.0) * 1e-3
+}
+
+/// Coolant inlet pressure, Pa. Defaults to 1.5× chamber pressure: the coolant must
+/// enter above Pc to cover the jacket and injector drops on its way to the chamber.
+pub fn coolant_pressure_pa(design: &EngineDesign) -> f64 {
+    let default_bar = 1.5 * design.operating_point.chamber_pressure.as_si() / 1e5;
+    design.param("cooling.coolant_pressure_bar", default_bar).max(0.5) * 1e5
+}
+
 /// Resolve a wall-material name to a [`cooling::materials::Material`]. The name
 /// `"Custom"` builds a material from the user's persisted `material.custom_*`
 /// params, so a design can use a material outside the fixed database (#13).
@@ -1216,8 +1231,9 @@ pub fn analysis_study(design: &mut EngineDesign) -> Result<AnalysisStudy, Engine
             r_inner_m: l0.chamber_diameter.as_si() / 2.0,
             wall_thickness_m: l0.wall_thickness.as_si(),
             gas_pressure_pa: pc,
+            // Hottest wall with the largest through-wall drop (conservative).
             wall_temp_hot_k: l3.max_wall_temp_k,
-            wall_temp_cold_k: 400.0,
+            wall_temp_cold_k: l3.max_wall_temp_k - l3.max_wall_dt_k,
         });
     }
     // Nozzle stations: gas pressure from the local area ratio.
@@ -1231,7 +1247,7 @@ pub fn analysis_study(design: &mut EngineDesign) -> Result<AnalysisStudy, Engine
             wall_thickness_m: l0.wall_thickness.as_si(),
             gas_pressure_pa: p,
             wall_temp_hot_k: s.wall_temp_k,
-            wall_temp_cold_k: s.coolant_temp_k,
+            wall_temp_cold_k: s.wall_temp_cold_k,
         });
     }
     let stress = structures::distribution::solve_stress_field(&stations, &structures::distribution::StressMaterial {

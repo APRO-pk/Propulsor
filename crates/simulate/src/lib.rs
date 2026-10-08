@@ -243,7 +243,8 @@ fn l3_input(design: &EngineDesign) -> Result<cooling::L3Input, EngineError> {
             design,
             &design.materials.chamber.clone().unwrap_or_else(|| "OFHC Copper".into()),
         ),
-        wall_thickness_m: l0.wall_thickness.as_si(),
+        // Heat crosses the thin hot-wall liner, not the L0 structural shell.
+        wall_thickness_m: design::liner_thickness_m(design),
         coolant_gap_m: l0.cooling_gap.as_si(),
         // User-settable coolant conditions (persisted cooling.* params).
         coolant_velocity_m_s: design.param("cooling.coolant_velocity_m_s", 6.0).max(0.5),
@@ -251,7 +252,7 @@ fn l3_input(design: &EngineDesign) -> Result<cooling::L3Input, EngineError> {
         channel_count: design.param("cooling.channel_count", 0.0).max(0.0),
         channel_width_m: design.param("cooling.channel_width_mm", 1.5).max(0.1) * 1e-3,
         channel_height_m: design.param("cooling.channel_height_mm", 3.0).max(0.1) * 1e-3,
-        coolant_pressure_pa: design.param("cooling.coolant_pressure_bar", 3.0).max(0.5) * 1e5,
+        coolant_pressure_pa: design::coolant_pressure_pa(design),
         film_cooling: None,
     })
 }
@@ -261,8 +262,9 @@ fn l4_input(design: &EngineDesign) -> Result<structures::L4Input, EngineError> {
     let l0: sizing_l0::L0Result = payload(design, Tier::L0)?;
     let l3: cooling::CoolingResult = payload(design, Tier::L3)?;
 
-    let wall_temp = l3.max_wall_temp_k;
-    let thermal_gradient = (wall_temp - 350.0).max(0.0);
+    // Through-wall (hot-wall − cold-wall) drop from L3 — not hot wall minus
+    // ambient, which overstates the thermal stress several-fold.
+    let thermal_gradient = l3.max_wall_dt_k.max(0.0);
 
     // Structural properties from the selected chamber material (not copper-pinned;
     // honors a user-defined "Custom" material too).
@@ -549,6 +551,50 @@ mod tests {
         resolve(&mut d).unwrap();
         assert_eq!(d.caches.len(), Tier::ALL.len());
         assert!(d.caches.iter().all(|c| c.status == SolveStatus::Solved));
+    }
+
+    fn l3_l4(d: &EngineDesign) -> (cooling::CoolingResult, structures::StructuresResult) {
+        (payload(d, Tier::L3).unwrap(), payload(d, Tier::L4).unwrap())
+    }
+
+    #[test]
+    fn l4_thermal_stress_uses_the_through_wall_drop() {
+        // Regression: L4 used (hot wall − 350 K) as the through-wall gradient,
+        // giving GPa-level thermal stress on every regen design.
+        let mut d = EngineDesign::new("test", "ci");
+        resolve(&mut d).unwrap();
+        let (l3, l4) = l3_l4(&d);
+        assert!(l3.max_wall_dt_k > 0.0 && l3.max_wall_dt_k < l3.max_wall_temp_k - 300.0);
+        let mat = design::resolve_material(&d, &d.materials.chamber.clone().unwrap_or_else(|| "OFHC Copper".into()));
+        let expected = mat.youngs_modulus_pa * mat.cte_per_k * l3.max_wall_dt_k / (2.0 * (1.0 - 0.33));
+        assert!((l4.thermal_stress_pa - expected).abs() < 1e-6 * expected);
+    }
+
+    #[test]
+    fn regen_conducts_through_the_liner_not_the_structural_shell() {
+        // The liner thickness param (not the L0 shell) sets the conduction drop:
+        // a thicker liner raises the through-wall ΔT roughly in proportion.
+        let mut d = EngineDesign::new("test", "ci");
+        resolve(&mut d).unwrap();
+        let (thin, _) = l3_l4(&d);
+        d.apply_field("cooling.liner_thickness_mm", engine_core::FieldValue::Num(2.0)).unwrap();
+        resolve(&mut d).unwrap();
+        let (thick, _) = l3_l4(&d);
+        assert!(thick.max_wall_dt_k > 1.5 * thin.max_wall_dt_k, "{} vs {}", thick.max_wall_dt_k, thin.max_wall_dt_k);
+    }
+
+    #[test]
+    fn coolant_pressure_defaults_to_one_and_a_half_pc() {
+        let mut d = EngineDesign::new("test", "ci");
+        resolve(&mut d).unwrap();
+        let pc = d.operating_point.chamber_pressure.as_si();
+        let (l3, _) = l3_l4(&d);
+        assert!((l3.stations[0].coolant_pressure_pa - 1.5 * pc).abs() < 1.0);
+        // An explicit user value still wins.
+        d.apply_field("cooling.coolant_pressure_bar", engine_core::FieldValue::Num(40.0)).unwrap();
+        resolve(&mut d).unwrap();
+        let (l3, _) = l3_l4(&d);
+        assert!((l3.stations[0].coolant_pressure_pa - 40e5).abs() < 1.0);
     }
 
     #[test]

@@ -42,6 +42,8 @@ export function Cooling() {
   const setMaterial = (m: string) => store.apply("wall_material", m);
   const setMethod = (m: string) => store.apply("cooling_method", m);
   const setNozzleMat = (m: string) => store.apply("nozzle_material", m);
+  // Coolant inlet pressure defaults to 1.5× Pc (mirrors simulate::design::coolant_pressure_pa).
+  const coolantPDefBar = Number((1.5 * (store.design?.operating_point.chamber_pressure ?? 0) / 1e5).toFixed(1));
   const [study, setStudy] = useState<CoolingStudyDto | null>(null);
 
   const rev = store.design?.meta.revision;
@@ -102,7 +104,8 @@ export function Cooling() {
           </select>
         </label>
         <ParamField label="Coolant velocity" k="cooling.coolant_velocity_m_s" def={6} step={1} dim="velocity" baseUnit="m/s" hint="regen jacket bulk velocity — higher lowers the wall temperature" />
-        <ParamField label="Coolant pressure" k="cooling.coolant_pressure_bar" def={3} step={0.5} dim="pressure" baseUnit="bar" hint="coolant inlet pressure — sets the boiling margin" />
+        <ParamField label="Coolant pressure" k="cooling.coolant_pressure_bar" def={coolantPDefBar} step={0.5} dim="pressure" baseUnit="bar" hint="coolant inlet pressure (default 1.5× chamber pressure) — sets the boiling margin" />
+        <ParamField label="Liner thickness" k="cooling.liner_thickness_mm" def={1.0} step={0.1} dim="length" baseUnit="mm" hint="hot-wall liner the heat conducts through (typ. 0.6–1.5 mm) — sets the through-wall ΔT and thermal stress" />
         <ParamField label="Cooling channels" k="cooling.channel_count" def={0} step={10} hint="discrete milled/printed channels; 0 → annular-gap model" />
         <ParamField label="Channel width" k="cooling.channel_width_mm" def={1.5} step={0.1} dim="length" baseUnit="mm" hint="rectangular channel width (used when channels > 0)" />
         <ParamField label="Channel height" k="cooling.channel_height_mm" def={3.0} step={0.1} dim="length" baseUnit="mm" hint="rectangular channel depth (used when channels > 0)" />

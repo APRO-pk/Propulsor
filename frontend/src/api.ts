@@ -1535,7 +1535,8 @@ function mockCooling(material: string, method: string): CoolingStudyDto {
   const qThroat = 272 * Math.pow(pc, 0.8);
   // Coolant conditions (user params, mirror the Rust L3 inputs).
   const coolantVel = pval("cooling.coolant_velocity_m_s", 6);
-  const coolantPBar = pval("cooling.coolant_pressure_bar", 3);
+  const coolantPBar = pval("cooling.coolant_pressure_bar", (1.5 * pc) / 1e5);
+  const linerMm = Math.min(20, Math.max(0.1, pval("cooling.liner_thickness_mm", 1.0)));
   // Discrete cooling channels (smaller hydraulic diameter → better coolant-side h
   // → cooler wall) vs the annular-gap fallback.
   const chCount = pval("cooling.channel_count", 0);
@@ -1548,10 +1549,13 @@ function mockCooling(material: string, method: string): CoolingStudyDto {
   }
   // Peak wall temperature: lower conductivity → hotter, hotter at higher Pc, and
   // cooler as coolant velocity rises or channels tighten (higher coolant-side h).
-  const wall = (620 + 9000 / m.thermal_conductivity_w_m_k) * Math.pow(pc / 2e6, 0.15) * Math.pow(6 / Math.max(coolantVel, 0.5), 0.2) * chFactor;
-  // Boiling margin grows with coolant pressure (higher saturation temp) and
-  // velocity (cooler wall-side coolant).
-  const boilMargin = 40 + 28 * (coolantPBar - 3) + 6 * (coolantVel - 6);
+  // The liner term is the conduction drop q·t/k relative to the 1 mm baseline.
+  const wall = (620 + 9000 / m.thermal_conductivity_w_m_k) * Math.pow(pc / 2e6, 0.15) * Math.pow(6 / Math.max(coolantVel, 0.5), 0.2) * chFactor
+    + Math.max(-200, (qThroat * (linerMm - 1) * 1e-3) / m.thermal_conductivity_w_m_k);
+  // Boiling margin grows with the water saturation temperature at the coolant
+  // pressure (Antoine, as in the Rust L3) and with velocity (cooler wall-side coolant).
+  const tSat = (bar: number) => (bar <= 1.01325 ? 373.15 : 1730.63 / (8.07131 - Math.log10(bar * 1e5 * 0.00750062)) - 233.426 + 273.15);
+  const boilMargin = 40 + (tSat(coolantPBar) - tSat(3)) + 6 * (coolantVel - 6);
 
   // Build stations from the real geometry: chamber barrel at r=chamberR, then the
   // converging/throat/diverging contour from L2 (fallback: throat→exit taper).
