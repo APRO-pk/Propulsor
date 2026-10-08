@@ -305,9 +305,9 @@ select:focus {
   padding: 6px 8px 0;
   background: linear-gradient(#e9e9ec, #e2e2e6);
   border-bottom: 1px solid var(--qt-border);
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
+  /* Wrap onto a second row rather than hiding tabs off-screen. */
+  flex-wrap: wrap;
+  row-gap: 2px;
 }
 .qt-tab {
   flex: 0 0 auto;

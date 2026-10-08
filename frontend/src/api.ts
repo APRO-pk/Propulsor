@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from "react";
 /**
  * Thin IPC layer over Tauri's `invoke`.
  *
@@ -102,7 +103,11 @@ export interface L2ResultDto {
   throat_diameter_m: number;
   divergence_correction: number;
   boundary_layer_correction: number;
+  /** Delivered Isp at the design ambient (matched p_amb = p_e for a fixed ε). */
   isp_s: number;
+  /** Delivered Isp in vacuum / at sea level (same losses). */
+  isp_vac_s?: number;
+  isp_sl_s?: number;
   c_star_m_s: number;
   /** Nozzle contour r(x) (throat → exit), when present in the payload. */
   stations?: ContourPointDto[];
@@ -443,6 +448,26 @@ export interface SweepResultDto { pc_values_bar: number[]; of_values: number[]; 
 
 const TAURI_AVAILABLE = "__TAURI_INTERNALS__" in window;
 
+/** Which backend served the latest call: the real solver (Tauri or the HTTP
+ *  host) or the in-browser mock fallback. The UI flags mock mode. */
+export type BackendMode = "real" | "mock";
+let backendMode: BackendMode = "real";
+const backendListeners = new Set<() => void>();
+function setBackendMode(m: BackendMode) {
+  if (m === backendMode) return;
+  backendMode = m;
+  backendListeners.forEach((l) => l());
+}
+export function useBackendMode(): BackendMode {
+  return useSyncExternalStore(
+    (cb) => {
+      backendListeners.add(cb);
+      return () => backendListeners.delete(cb);
+    },
+    () => backendMode,
+  );
+}
+
 /** Invoke a Tauri command, or return a browser-dev fallback outside the host. */
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (!TAURI_AVAILABLE) {
@@ -454,14 +479,30 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(args ?? {}),
       });
-      if (r.ok) return (await r.json()) as T;
+      if (r.ok) {
+        setBackendMode("real");
+        return (await r.json()) as T;
+      }
     } catch {
       // ignore → mock fallback
     }
+    setBackendMode("mock");
     return mockCommand<T>(cmd, args ?? {});
   }
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<T>(cmd, args);
+}
+
+/** ~1 element per kN, 6–600 (mirrors simulate::design::default_element_count). */
+export function defaultElementCount(thrustN: number): number {
+  return Math.min(600, Math.max(6, Math.round(thrustN / 1000)));
+}
+
+/** Default injector element per propellant pair (mirrors simulate::design::default_element_type). */
+export function defaultElementType(pair: string): string {
+  if (["NtoMmh", "NtoUdmh", "LoxEthanol", "Unset", ""].includes(pair)) return "UnlikeDoublet";
+  if (["LoxRp1", "H2o2Kerosene", "NitrousPropane"].includes(pair)) return "LikeDoublet";
+  return "Coaxial";
 }
 
 /** Persist a single field edit and get the re-resolved design back. */
@@ -820,7 +861,7 @@ function mockControl(feedType: string): ControlStudyDto {
 
   const pcBw = pval("control.pc_bandwidth_hz", 5);
   const mrBw = pval("control.mr_bandwidth_hz", 20);
-  const sample = pval("control.sample_rate_hz", 50);
+  const sample = pval("control.sample_rate_hz", 500);
   const sigmaMs = pval("control.combustion_delay_ms", 1.5);
   const target = pval("control.throttle_target", 0.8);
   const turbInletK = pval("turbo.turbine_inlet_temp_k", 950);
@@ -964,8 +1005,8 @@ function mockIssues(): IssuesReportDto {
     if (tp.pump.cavitation_margin_m < 0) add("warn", "Turbopumps", `Pump cavitates — NPSH margin ${tp.pump.cavitation_margin_m.toFixed(1)} m`);
     if (!tp.shaft.subcritical) add("warn", "Turbopumps", `Shaft runs supercritical (N_cr ${tp.shaft.first_critical_rpm.toFixed(0)} rpm)`);
     if (tp.gg_cycle.margin < 1) add("warn", "Turbopumps", `Gas-generator cycle under-powered — turbine/pump power ${tp.gg_cycle.margin.toFixed(2)}`);
-    const boreMm = pval("turbo.bearing_bore_mm", 45);
     const shaftMm = tp.shaft.diameter_m * 1000;
+    const boreMm = pval("turbo.bearing_bore_mm", Math.max(5, Math.ceil(shaftMm / 5) * 5));
     if (boreMm > 3 * shaftMm) add("warn", "Turbopumps", `Bearing bore ${boreMm.toFixed(0)} mm is far larger than the ${shaftMm.toFixed(1)} mm shaft — incompatible sizing`);
     for (const w of mockBlade(20000).warnings) add("warn", "Blades", w);
     for (const w of mockControl("").warnings) add("warn", "Control", w);
@@ -1153,17 +1194,22 @@ function mockHarness(feed: string, burn: number, hasPressurant: boolean, runLen:
   };
 }
 
+/** min(S/σ_hoop, 2S/(σ_hoop+σ_thermal)) — mirrors structures::distribution::stress_margin. */
+function stressMargin(hoop: number, thermal: number, allowable: number): number {
+  return Math.min(allowable / Math.max(hoop, 1), (2 * allowable) / Math.max(hoop + thermal, 1));
+}
+
 function mockAnalysis(): AnalysisStudyDto {
   const l0 = liveDesign.caches.find((c) => c.tier === "L0")?.payload as L0ResultDto | undefined;
   const l2 = liveDesign.caches.find((c) => c.tier === "L2")?.payload as L2ResultDto | undefined;
   const pc = liveDesign.operating_point.chamber_pressure;
   const mat = mockMaterial(String(liveDesign.materials?.chamber || "OFHC Copper"));
   const dpFrac = pval("injector.dp_fraction", 0.2);
-  const nElem = Math.round(pval("injector.element_count", 24));
+  const nElem = Math.round(pval("injector.element_count", defaultElementCount(liveDesign.operating_point.thrust)));
   const cd = pval("injector.discharge_coefficient", 0.7);
   const sigma = pval("injector.surface_tension_n_m", 0.02);
   const fuelDensFactor = pval("injector.fuel_density_factor", 0.72);
-  const elementType = pchoice("injector.element_type", "UnlikeDoublet");
+  const elementType = pchoice("injector.element_type", defaultElementType(liveDesign.propellant.pair));
   const dp = dpFrac * pc;
   // Real propellant densities + chamber gas density (from Pc / R·Tc).
   const oxRho = (COMPONENT_DENSITY[liveDesign.propellant.pair] ?? [1140, 800])[0];
@@ -1205,14 +1251,14 @@ function mockAnalysis(): AnalysisStudyDto {
   const stations: AnalysisStudyDto["stress"]["stations"] = [];
   for (let i = 0; i < 4; i++) {
     const s = stress(chamberD / 2, pc, 220);
-    stations.push({ x: -chamberL * (1 - i / 3), r: chamberD / 2, hoop_stress_pa: s.hoop, thermal_stress_pa: s.thermal, combined_stress_pa: s.combined, margin: mat.allowable_stress_pa / s.combined });
+    stations.push({ x: -chamberL * (1 - i / 3), r: chamberD / 2, hoop_stress_pa: s.hoop, thermal_stress_pa: s.thermal, combined_stress_pa: s.combined, margin: stressMargin(s.hoop, s.thermal, mat.allowable_stress_pa) });
   }
   for (const st of l2?.stations ?? []) {
     const ar = Math.max(1, (st.r / rt) ** 2);
     const p = pc / (1 + 0.1 * (ar - 1)) / ar ** 0.6; // rough falling pressure
     const dT = 130 + 150 * (rt / Math.max(st.r, rt)); // hotter near the throat
     const s = stress(st.r, p, dT);
-    stations.push({ x: st.x, r: st.r, hoop_stress_pa: s.hoop, thermal_stress_pa: s.thermal, combined_stress_pa: s.combined, margin: mat.allowable_stress_pa / s.combined });
+    stations.push({ x: st.x, r: st.r, hoop_stress_pa: s.hoop, thermal_stress_pa: s.thermal, combined_stress_pa: s.combined, margin: stressMargin(s.hoop, s.thermal, mat.allowable_stress_pa) });
   }
   const maxC = Math.max(...stations.map((s) => s.combined_stress_pa));
   const minM = Math.min(...stations.map((s) => s.margin));
@@ -1428,7 +1474,9 @@ function mockResolve() {
     area_ratio: eps, exit_mach: me, exit_pressure_pa: Math.max(1000, pe),
     exit_temperature_k: tcEff / (1 + ((gam - 1) / 2) * me * me), exit_diameter_m: exitD, throat_diameter_m: throatD,
     divergence_correction: kind === "Bell" ? 0.5 * (1 + Math.cos((thetaE * Math.PI) / 180)) : 0.983, boundary_layer_correction: 0.985,
-    isp_s: (cstar * cfVac / g0) * effScale * flowBonus * combustorPr, c_star_m_s: cstar * effScale, stations,
+    isp_s: (cstar * cfVac / g0) * effScale * flowBonus * combustorPr,
+    isp_vac_s: (cstar * cfVac / g0) * effScale * flowBonus * combustorPr,
+    c_star_m_s: cstar * effScale, stations,
     bell_theta_n_deg: kind === "Bell" ? thetaN : 0, bell_theta_e_deg: kind === "Bell" ? thetaE : 0,
     chamber_mach: chamberMach, combustor_pressure_ratio: combustorPr,
   };
@@ -1732,7 +1780,6 @@ function mockTurbopump(rpm: number): TurbopumpStudyDto {
   const pumpEff = pval("turbo.pump_efficiency", 0.7);
   const turbEff = pval("turbo.turbine_efficiency", 0.65);
   const ggFrac = pval("turbo.gg_flow_fraction", 0.03);
-  const bore = pval("turbo.bearing_bore_mm", 45);
   const dnLimit = pval("turbo.bearing_dn_limit_millions", 2.0) * 1e6;
   const life = pval("turbo.bearing_life_hours", 5000);
   // Pump head from the pressure rise (discharge − tank), power from ṁ·g·H/η.
@@ -1744,7 +1791,6 @@ function mockTurbopump(rpm: number): TurbopumpStudyDto {
   const q = totalFlow / rho;
   const power = (rho * q * g0 * head) / Math.max(pumpEff, 0.1);
   const omega = (2 * Math.PI * rpm) / 60;
-  const dnValue = rpm * bore;
 
   // Dimensionless pump specific speed Ns = ω√Q/(gH)^0.75 (→ US units ×2733).
   const nsDimless = omega * Math.sqrt(Math.max(q, 1e-6)) / Math.pow(g0 * Math.max(head, 1), 0.75);
@@ -1773,8 +1819,19 @@ function mockTurbopump(rpm: number): TurbopumpStudyDto {
   const torque = power / Math.max(omega, 1);
   const tauAllow = pval("turbo.shaft_allowable_shear_mpa", 200) * 1e6;
   const sf = pval("turbo.shaft_safety_factor", 1.5);
-  const shaftD = Math.cbrt((16 * torque * sf) / (Math.PI * tauAllow));
-  const critRpm = rpm * (1.2 + 0.5 * (20000 / Math.max(rpm, 1000)));
+  // Torsion diameter, grown for stiffness so N_cr ≥ ratio × speed (mirrors the
+  // Rust solve_shaft: simply supported span, lumped mid-span mass, k = 48EI/L³).
+  const span = pval("turbo.shaft_length_m", 0.35);
+  const mass = pval("turbo.shaft_lumped_mass_kg", 6);
+  const eMod = pval("turbo.shaft_youngs_gpa", 200) * 1e9;
+  const ratio = Math.max(0, pval("turbo.shaft_critical_ratio", 1.25));
+  const dTorsion = Math.cbrt((16 * torque * sf) / (Math.PI * tauAllow));
+  const dStiff = ratio > 0 ? Math.pow((64 * mass * Math.pow(omega * ratio, 2) * Math.pow(span, 3)) / (48 * eMod * Math.PI), 0.25) : 0;
+  const shaftD = Math.max(dTorsion, dStiff);
+  const kShaft = (48 * eMod * (Math.PI * Math.pow(shaftD, 4)) / 64) / Math.pow(span, 3);
+  const critRpm = (Math.sqrt(kShaft / mass) * 60) / (2 * Math.PI);
+  const bore = pval("turbo.bearing_bore_mm", Math.max(5, Math.ceil((shaftD * 1000) / 5) * 5));
+  const dnValue = rpm * bore;
 
   // Bearing: equivalent load, dynamic rating from bore, L10 life = (C/P)^3·1e6/(60N).
   const eqLoad = Math.hypot(pval("turbo.bearing_radial_load_n", 10000), pval("turbo.bearing_axial_load_n", 4000));

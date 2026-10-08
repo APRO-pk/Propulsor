@@ -79,7 +79,8 @@ pub fn solve_l4(input: &L4Input) -> Result<StructuresResult, EngineError> {
     // Combined stress (Tresca-like: hoop + thermal).
     let combined = hoop + thermal;
 
-    let pressure_margin = input.allowable_stress_pa / combined;
+    // Primary (hoop) vs S, primary + thermal (secondary) vs the 2·S shakedown limit.
+    let pressure_margin = distribution::stress_margin(hoop, thermal, input.allowable_stress_pa);
 
     // Elastic buckling under external pressure (long cylinder).
     let buckling = input.youngs_modulus * (t / r).powi(3)

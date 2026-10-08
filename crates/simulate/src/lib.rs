@@ -75,6 +75,12 @@ pub fn resolve(design: &mut EngineDesign) -> Result<(), EngineError> {
         design.caches.clear();
         return Ok(());
     }
+    // Drop any cache whose recorded inputs no longer match the design (e.g. a
+    // project file edited by hand or saved by an older build) so it re-solves.
+    let current: Vec<(Tier, u64)> = Tier::ALL.iter().map(|&t| (t, finger_print(design, t))).collect();
+    design
+        .caches
+        .retain(|c| current.iter().any(|&(t, h)| t == c.tier && h == c.inputs_hash));
     for tier in Tier::ALL {
         if design.caches.iter().any(|c| c.tier == tier) {
             continue;
@@ -149,8 +155,31 @@ pub fn resolve(design: &mut EngineDesign) -> Result<(), EngineError> {
     Ok(())
 }
 
-fn finger_print(_design: &EngineDesign, _tier: Tier) -> u64 {
-    0u64
+/// Fingerprint of everything a tier's solve reads: the requirements, geometry,
+/// materials and the tier-feeding params/choices (lower-tier results follow
+/// deterministically from these). Masked to 53 bits so it survives a JSON
+/// round-trip through the frontend. (A toolchain change may alter the hash; that
+/// only costs one re-solve on load.)
+fn finger_print(design: &EngineDesign, tier: Tier) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let tier_params: Vec<(&String, String)> = design
+        .params
+        .iter()
+        .map(|(k, v)| (k, v.to_bits().to_string()))
+        .chain(design.choices.iter().map(|(k, v)| (k, v.clone())))
+        .filter(|(k, _)| engine_core::design::tier_root_for_param(k).is_some())
+        .collect();
+    let inputs = serde_json::json!({
+        "tier": tier,
+        "propellant": design.propellant,
+        "operating_point": design.operating_point,
+        "geometry": design.geometry,
+        "materials": design.materials,
+        "params": tier_params,
+    });
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    inputs.to_string().hash(&mut h);
+    h.finish() & ((1u64 << 53) - 1)
 }
 
 /// L0 assumptions for a design: the characteristic chamber length L* comes from
@@ -162,8 +191,17 @@ fn l0_assumptions(design: &EngineDesign) -> sizing_l0::L0Assumptions {
         .as_ref()
         .and_then(|c| c.l_star_m)
         .unwrap_or_else(|| sizing_l0::recommended_l_star(design.propellant.pair));
+    // Pressure shell: the selected chamber material's allowable with a design
+    // safety factor (Krzycki's 8000 psi copper at SF 1.0 is "before margin"; the
+    // golden test keeps that, the app applies the margin here).
+    let mat = design::resolve_material(
+        design,
+        &design.materials.chamber.clone().unwrap_or_else(|| "OFHC Copper".into()),
+    );
     sizing_l0::L0Assumptions {
         l_star_m: l_star,
+        allowable_stress: engine_core::Pressure::si(mat.allowable_stress_pa),
+        wall_safety_factor: design.param("structures.wall_safety_factor", 1.5).clamp(1.0, 5.0),
         ..sizing_l0::L0Assumptions::default()
     }
 }
@@ -232,8 +270,13 @@ fn l3_input(design: &EngineDesign) -> Result<cooling::L3Input, EngineError> {
     let l2: gasdynamics::L2Result = payload(design, Tier::L2)?;
     let coolant = design::coolant(design);
 
+    // Cool the whole inner wall: chamber barrel + convergent upstream of the
+    // throat (x < 0), then the L2 nozzle (throat at x = 0 → exit).
+    let mut stations = chamber_stations(&l0, l2.throat_diameter_m / 2.0);
+    stations.extend(l2.stations.iter().cloned());
+
     Ok(cooling::L3Input {
-        stations: l2.stations.clone(),
+        stations,
         throat_radius_m: l2.throat_diameter_m / 2.0,
         gamma: l1.gamma,
         tc_k: l1.tc_k,
@@ -263,6 +306,30 @@ fn l3_input(design: &EngineDesign) -> Result<cooling::L3Input, EngineError> {
     })
 }
 
+/// Chamber barrel + convergent-section wall stations upstream of the throat, in
+/// the L2 frame (throat at x = 0, so these sit at x < 0). The injector face is at
+/// x = −L_c; the convergent is a cosine blend over a 30° half-angle length
+/// (capped at half the chamber), mirroring the frontend's engine profile.
+fn chamber_stations(l0: &sizing_l0::L0Result, r_t: f64) -> Vec<engine_core::ContourPoint> {
+    let r_c = (l0.chamber_diameter.as_si() / 2.0).max(r_t);
+    let l_c = l0.chamber_length.as_si().max(1e-4);
+    let l_conv = ((r_c - r_t) / 30f64.to_radians().tan()).min(0.5 * l_c);
+    let x_barrel_end = -l_conv;
+    let mut pts = Vec::new();
+    let n_barrel = 6;
+    for i in 0..n_barrel {
+        let t = i as f64 / n_barrel as f64;
+        pts.push(engine_core::ContourPoint { x: -l_c + t * (x_barrel_end + l_c), r: r_c });
+    }
+    let n_conv = 12;
+    for i in 0..n_conv {
+        let t = i as f64 / n_conv as f64; // stops short of the throat (L2 starts there)
+        let r = r_t + (r_c - r_t) * (0.5 + 0.5 * (std::f64::consts::PI * t).cos());
+        pts.push(engine_core::ContourPoint { x: x_barrel_end + t * l_conv, r });
+    }
+    pts
+}
+
 /// Build the L4 structures input from L0 (geometry) and L3 (thermal gradient).
 fn l4_input(design: &EngineDesign) -> Result<structures::L4Input, EngineError> {
     let l0: sizing_l0::L0Result = payload(design, Tier::L0)?;
@@ -270,7 +337,8 @@ fn l4_input(design: &EngineDesign) -> Result<structures::L4Input, EngineError> {
 
     // Through-wall (hot-wall − cold-wall) drop from L3 — not hot wall minus
     // ambient, which overstates the thermal stress several-fold.
-    let thermal_gradient = l3.max_wall_dt_k.max(0.0);
+    // Only actively cooled walls carry the regen through-wall gradient.
+    let thermal_gradient = if design::actively_cooled(design) { l3.max_wall_dt_k.max(0.0) } else { 0.0 };
 
     // Structural properties from the selected chamber material (not copper-pinned;
     // honors a user-defined "Custom" material too).
@@ -630,6 +698,45 @@ mod tests {
         assert_eq!(l3.coolant_limit_kind, cooling::coolant::CoolantLimitKind::None);
         assert!(l3.coolant_limit_k.is_none());
         assert_eq!(l3.min_boiling_margin_k, 0.0);
+    }
+
+    #[test]
+    fn l3_cools_the_chamber_and_convergent_too() {
+        let mut d = EngineDesign::new("test", "ci");
+        resolve(&mut d).unwrap();
+        let l0: sizing_l0::L0Result = payload(&d, Tier::L0).unwrap();
+        let (l3, _) = l3_l4(&d);
+        let first = &l3.stations[0];
+        // Starts at the injector face on the chamber radius…
+        assert!((first.x + l0.chamber_length.as_si()).abs() < 1e-9);
+        assert!((first.r - l0.chamber_diameter.as_si() / 2.0).abs() < 1e-9);
+        // …the peak heat flux sits in the throat region (Bartz peaks at or just
+        // upstream of the geometric throat), not in the subsonic chamber…
+        let r_t = l3.stations.iter().map(|s| s.r).fold(f64::INFINITY, f64::min);
+        let peak = l3.stations.iter().max_by(|a, b| a.heat_flux_w_m2.total_cmp(&b.heat_flux_w_m2)).unwrap();
+        assert!(peak.r < 1.02 * r_t, "peak flux at x = {}, r/r_t = {}", peak.x, peak.r / r_t);
+        assert!(first.heat_flux_w_m2 < peak.heat_flux_w_m2);
+        // …and counterflow coolant leaves at the injector end, hottest.
+        let hottest = l3.stations.iter().map(|s| s.coolant_temp_k).fold(0.0, f64::max);
+        assert!((first.coolant_temp_k - hottest).abs() < 1e-9);
+    }
+
+    #[test]
+    fn stale_caches_are_detected_by_fingerprint() {
+        let mut d = EngineDesign::new("test", "ci");
+        resolve(&mut d).unwrap();
+        assert!(d.caches.iter().all(|c| c.inputs_hash == finger_print(&d, c.tier) && c.inputs_hash != 0));
+        // Change an input behind apply_field's back (as a hand-edited project
+        // file would): resolve must notice and re-solve rather than reuse caches.
+        let before: sizing_l0::L0Result = payload(&d, Tier::L0).unwrap();
+        d.operating_point.thrust = engine_core::Force::si(2.0 * d.operating_point.thrust.as_si());
+        resolve(&mut d).unwrap();
+        let after: sizing_l0::L0Result = payload(&d, Tier::L0).unwrap();
+        assert!(after.total_flow.as_si() > 1.9 * before.total_flow.as_si());
+        // A study-only param leaves the tier fingerprints untouched.
+        let h = finger_print(&d, Tier::L3);
+        d.apply_field("blade.pump_blade_count", engine_core::FieldValue::Num(7.0)).unwrap();
+        assert_eq!(h, finger_print(&d, Tier::L3));
     }
 
     #[test]

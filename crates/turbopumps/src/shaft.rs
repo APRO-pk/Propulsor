@@ -14,6 +14,10 @@ pub struct ShaftInput {
     pub youngs_modulus_pa: f64,
     /// Lumped rotating mass carried by the shaft (impeller + turbine wheel), kg.
     pub lumped_mass_kg: f64,
+    /// Required first-critical / operating speed ratio. When > 0 the diameter is
+    /// grown (if torsion alone would leave it too slender) until the shaft runs
+    /// subcritical with this margin. 0 → size for torsion only.
+    pub min_critical_ratio: f64,
 }
 
 /// Shaft result.
@@ -42,8 +46,10 @@ impl ShaftResult {
     }
 }
 
-/// Size a solid drive shaft from transmitted power and allowable shear, then check
-/// its first bending critical (whirl) speed against the operating speed.
+/// Size a solid drive shaft from transmitted power and allowable shear — and, when
+/// `min_critical_ratio` > 0, from the stiffness needed to keep the first bending
+/// critical (whirl) speed that far above the operating speed — then report both.
+/// Turbopump shafts are usually stiffness-limited, not torsion-limited.
 ///
 /// The critical speed is a first-cut Rayleigh estimate: a massless shaft of the
 /// computed diameter, simply supported over `length_m`, carrying `lumped_mass_kg`
@@ -53,16 +59,25 @@ pub fn solve_shaft(input: &ShaftInput) -> ShaftResult {
     let torque = input.power_w / omega.max(1e-9);
     let sf = input.design_safety_factor.max(1.0);
     let working = input.allowable_shear_pa / sf;
-    let diameter = (16.0 * torque / (std::f64::consts::PI * working)).cbrt();
+    let d_torsion = (16.0 * torque / (std::f64::consts::PI * working)).cbrt();
+    // Stiffness sizing: k = 48·E·I/L³ ≥ M·ω_req² with I = π·d⁴/64.
+    let l = input.length_m.max(1e-6);
+    let m = input.lumped_mass_kg.max(1e-9);
+    let d_stiffness = if input.min_critical_ratio > 0.0 {
+        let omega_req = omega * input.min_critical_ratio;
+        let i_req = m * omega_req * omega_req * l.powi(3) / (48.0 * input.youngs_modulus_pa.max(1.0));
+        (64.0 * i_req / std::f64::consts::PI).powf(0.25)
+    } else {
+        0.0
+    };
+    let diameter = d_torsion.max(d_stiffness);
     // Actual torsional shear at the chosen diameter and the true margin to allowable.
     let shear = 16.0 * torque / (std::f64::consts::PI * diameter.powi(3));
     let margin = input.allowable_shear_pa / shear.max(1.0);
 
     // First bending critical (whirl) speed.
     let i_area = std::f64::consts::PI * diameter.powi(4) / 64.0;
-    let l = input.length_m.max(1e-6);
     let k = 48.0 * input.youngs_modulus_pa * i_area / l.powi(3);
-    let m = input.lumped_mass_kg.max(1e-9);
     let omega_cr = (k / m).sqrt();
     let n_cr = omega_cr * 60.0 / (2.0 * std::f64::consts::PI);
 
@@ -90,7 +105,20 @@ mod tests {
             length_m: 0.3,
             youngs_modulus_pa: 200.0e9,
             lumped_mass_kg: 5.0,
+            min_critical_ratio: 0.0,
         }
+    }
+
+    #[test]
+    fn stiffness_sizing_keeps_the_shaft_subcritical() {
+        // A low-power pump: torsion alone gives a slender, supercritical shaft.
+        let base = ShaftInput { power_w: 50.0e3, ..shaft_input() };
+        let torsion = solve_shaft(&base);
+        assert!(!torsion.subcritical, "test premise: torsion-only shaft is supercritical");
+        let r = solve_shaft(&ShaftInput { min_critical_ratio: 1.25, ..base });
+        assert!(r.subcritical);
+        assert!((r.critical_speed_margin - 1.25).abs() < 1e-6, "margin = {}", r.critical_speed_margin);
+        assert!(r.diameter_m > torsion.diameter_m && r.safety_margin > 1.5);
     }
 
     #[test]

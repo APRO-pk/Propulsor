@@ -47,7 +47,7 @@ export function Control() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0 16px" }}>
           <ParamField label="Pc loop bandwidth (slow)" k="control.pc_bandwidth_hz" def={5} step={0.5} unit="Hz" hint="thrust-response bandwidth" />
           <ParamField label="MR loop bandwidth (fast)" k="control.mr_bandwidth_hz" def={20} step={1} unit="Hz" hint="fast loop holds combustion temperature" />
-          <ParamField label="Sample rate" k="control.sample_rate_hz" def={50} step={10} unit="Hz" hint="SSME uses 50 Hz PI" />
+          <ParamField label="Sample rate" k="control.sample_rate_hz" def={500} step={10} unit="Hz" hint="keep each loop bandwidth below ~1/10 of this (the SSME controller's major cycle was 50 Hz)" />
           <ParamField label="Combustion dead time σ" k="control.combustion_delay_ms" def={1.5} step={0.1} dim="time" baseUnit="ms" />
           <ParamField label="Throttle step target" k="control.throttle_target" def={0.8} step={0.05} hint="fraction of rated Pc for the step test" />
           <ParamField label="Turbine temp redline" k="control.turbine_redline_k" def={1100} step={25} dim="temperature" baseUnit="K" hint="pump-fed shutdown redline" />

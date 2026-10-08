@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { analysisStudy, type AnalysisStudyDto, type EreResultDto } from "./api";
+import { analysisStudy, defaultElementCount, defaultElementType, type AnalysisStudyDto, type EreResultDto } from "./api";
 import { useEngineStore } from "./store";
 import { ParamField, ParamChoice, ResetParams } from "./ParamInput";
-import { downloadText } from "./Cooling";
+import { downloadText } from "./exporters";
 
 export function Analysis() {
   const [a, setA] = useState<AnalysisStudyDto | null>(null);
   const rev = useEngineStore((s) => s.design?.meta.revision);
+  const design = useEngineStore((s) => s.design);
   useEffect(() => {
     let live = true;
     analysisStudy().then((r) => live && setA(r)).catch(() => {});
@@ -22,8 +23,8 @@ export function Analysis() {
       <fieldset className="qt-groupbox" style={{ gridColumn: "1 / 3" }}>
         <legend>Injector design inputs<span style={{ float: "right" }}><ResetParams prefix="injector." /></span></legend>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "0 16px" }}>
-          <ParamChoice label="Element type" k="injector.element_type" def="UnlikeDoublet" options={["UnlikeDoublet", "LikeDoublet", "Coaxial"]} />
-          <ParamField label="Element count" k="injector.element_count" def={24} step={1} />
+          <ParamChoice label="Element type" k="injector.element_type" def={defaultElementType(design?.propellant.pair ?? "")} options={["UnlikeDoublet", "LikeDoublet", "Coaxial"]} />
+          <ParamField label="Element count" k="injector.element_count" def={defaultElementCount(design?.operating_point.thrust ?? 0)} step={1} hint="default ≈ 1 element per kN of thrust" />
           <ParamField label="ΔP (frac of Pc)" k="injector.dp_fraction" def={0.2} step={0.01} hint="0.15–0.3 typical; higher ΔP = more stable" />
           <ParamField label="Discharge coeff Cd" k="injector.discharge_coefficient" def={0.7} step={0.01} />
           <ParamField label="Surface tension" k="injector.surface_tension_n_m" def={0.02} step={0.005} unit="N/m" hint="atomization (SMD)" />
@@ -78,7 +79,13 @@ export function Analysis() {
           </div>
           <div className="qt-field" style={{ minWidth: 200 }}><span>Min safety margin</span><b>{a.stress.min_margin.toFixed(2)}</b></div>
           <div className="qt-field" style={{ minWidth: 200 }}><span>Stations</span><b>{a.stress.stations.length}</b></div>
+          <div style={{ minWidth: 260 }}>
+            <ParamField label="Shell safety factor" k="structures.wall_safety_factor" def={1.5} step={0.1} hint="pressure-shell thickness = SF·Pc·r / material allowable (L0)" />
+          </div>
         </div>
+        <p className="muted" style={{ margin: "6px 0 0" }}>
+          Margin = min(S / σ_hoop, 2S / (σ_hoop + σ_thermal)): pressure stress against the allowable, plus the self-limiting thermal stress against the shakedown limit.
+        </p>
         <StressStrip stations={a.stress.stations} />
         <button className="qt-tool" style={{ marginTop: 10 }} onClick={() => downloadText("stress_field.csv", a.stress_csv)}>Export stress field CSV (FEM)</button>
       </fieldset>

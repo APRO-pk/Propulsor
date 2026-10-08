@@ -54,7 +54,8 @@ export function Turbopumps() {
           <ParamField label="Turbine γ" k="turbo.turbine_gamma" def={1.3} step={0.01} />
           <ParamField label="Turbine Tin" k="turbo.turbine_inlet_temp_k" def={950} step={25} dim="temperature" baseUnit="K" />
           <ParamField label="Turbine exit pressure" k="turbo.turbine_exit_pressure_bar" def={3.0} step={0.5} dim="pressure" baseUnit="bar" />
-          <ParamField label="Bearing bore" k="turbo.bearing_bore_mm" def={45} step={1} dim="length" baseUnit="mm" />
+          <ParamField label="Bearing bore" k="turbo.bearing_bore_mm" def={study ? Math.max(5, Math.ceil((study.shaft.diameter_m * 1000) / 5) * 5) : 45} step={1} dim="length" baseUnit="mm" hint="default: shaft diameter rounded up to a standard 5 mm bore" />
+          <ParamField label="Shaft critical-speed ratio" k="turbo.shaft_critical_ratio" def={1.25} step={0.05} hint="shaft is stiffened until its first critical speed is this multiple of the running speed (0 = size for torsion only)" />
           <ParamField label="Bearing DN limit" k="turbo.bearing_dn_limit_millions" def={2.0} step={0.1} unit="M" hint="rolling-element DN limit 1.6–2.1 million (Cannon)" />
           <ParamField label="Bearing life" k="turbo.bearing_life_hours" def={5000} step={500} unit="h" />
           <ParamField label="Shaft allowable shear" k="turbo.shaft_allowable_shear_mpa" def={200} step={10} dim="pressure" baseUnit="MPa" />

@@ -33,8 +33,8 @@ pub struct EreInput {
     pub chamber_pressure_pa: f64,
 }
 
-/// Reference combustion time (ms) a well-atomized spray needs to finish
-/// reacting; residence time is compared against this.
+/// Reference combustion time (ms) a well-atomized spray needs to release ~95% of
+/// its energy; residence time is compared against this.
 const REQUIRED_TIME_MS: f64 = 0.6;
 /// Sauter mean diameter (m) taken as "well atomized" — no atomization penalty
 /// below it.
@@ -66,8 +66,9 @@ pub fn energy_release_efficiency(input: &EreInput) -> EreResult {
     let m_dot = input.mass_flow_kg_s.max(1e-6);
     let tau_res = input.chamber_gas_density_kg_m3.max(1e-3) * v_c / m_dot;
     let tau_req = REQUIRED_TIME_MS * 1e-3;
-    // First-order approach to complete combustion as residence time grows.
-    let residence = (1.0 - (-tau_res / tau_req).exp()).clamp(0.3, 0.9995);
+    // First-order approach to complete combustion, with τ_req the time to 95%
+    // release (three time constants): τ_res = τ_req → 95%, 2·τ_req → 99.75%.
+    let residence = (1.0 - (-3.0 * tau_res / tau_req).exp()).clamp(0.3, 0.9995);
 
     // Atomization: no penalty at/under the reference SMD, a bounded linear
     // penalty above it (coarse sprays don't finish burning).
@@ -105,6 +106,14 @@ pub fn energy_release_efficiency(input: &EreInput) -> EreResult {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn residence_equal_to_required_time_gives_95_percent() {
+        // ρ·L*·A_t/ṁ = 0.6 ms exactly.
+        let r = energy_release_efficiency(&EreInput { chamber_gas_density_kg_m3: 0.6e-3 * 2.0 / 2.0e-3, ..nominal() });
+        assert!((r.residence_time_ms - REQUIRED_TIME_MS).abs() < 1e-9);
+        assert!((r.residence_efficiency - (1.0 - (-3.0f64).exp())).abs() < 1e-12);
+    }
+
     use super::*;
 
     fn nominal() -> EreInput {

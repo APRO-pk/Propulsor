@@ -11,7 +11,7 @@
 //! L1; the contour `r(x)` from L2; the coolant mass flow (the fuel flow) from L0.
 
 use engine_core::{ContourPoint, EngineError};
-use gasdynamics::quasi1d::{mach_from_area, pressure_ratio, temperature_ratio};
+use gasdynamics::quasi1d::{mach_from_area, pressure_ratio, subsonic_mach_from_area, temperature_ratio};
 
 pub mod ablative;
 pub mod coolant;
@@ -225,12 +225,22 @@ pub fn solve_l3(input: &L3Input) -> Result<CoolingResult, EngineError> {
         h_gas: f64,
         film_eff: f64,
     }
+    // Stations upstream of the throat (chamber + convergent) are subsonic.
+    let x_throat = input
+        .stations
+        .iter()
+        .min_by(|a, b| a.r.partial_cmp(&b.r).unwrap_or(std::cmp::Ordering::Equal))
+        .map_or(0.0, |s| s.x);
     let gas: Vec<GasSide> = input
         .stations
         .iter()
         .map(|pt| {
             let ar = area_ratio_at(pt.r);
-            let m = mach_from_area(ar.max(1.0), input.gamma);
+            let m = if pt.x < x_throat {
+                subsonic_mach_from_area(ar.max(1.0), input.gamma)
+            } else {
+                mach_from_area(ar.max(1.0), input.gamma)
+            };
             let t_gas = input.tc_k * temperature_ratio(m, input.gamma);
             let p_gas = input.pc_pa * pressure_ratio(m, input.gamma);
             let rho_gas = p_gas / (r_spec * t_gas);

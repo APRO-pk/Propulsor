@@ -6,6 +6,9 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
+  // Tabs are lazy-loaded; the one chunk over Vite's 500 kB default is the
+  // three.js vendor chunk, fetched only when a 3D tab opens.
+  build: { chunkSizeWarningLimit: 900 },
   server: {
     port: 1420,
     strictPort: true,

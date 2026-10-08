@@ -24,15 +24,8 @@ const METHODS = [
   { id: "ablative", label: "Ablative" },
 ];
 
-export function downloadText(name: string, text: string) {
-  const blob = new Blob([text], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+import { downloadText } from "./exporters";
+export { downloadText };
 
 export function Cooling() {
   const store = useEngineStore();
@@ -49,6 +42,7 @@ export function Cooling() {
   const coolantChoice = store.design?.choices?.["cooling.coolant"] ?? "fuel";
   const coolantVelDef = coolantChoice === "water" ? 6 : pair === "LoxHydrogen" ? 100 : pair === "LoxMethane" ? 30 : 20;
   const channelMode = (store.design?.params?.["cooling.channel_count"] ?? 0) > 0;
+  const l0Len = (store.design?.caches.find((c) => c.tier === "L0")?.payload as { chamber_length?: number } | undefined)?.chamber_length;
   const [study, setStudy] = useState<CoolingStudyDto | null>(null);
 
   const rev = store.design?.meta.revision;
@@ -183,7 +177,7 @@ export function Cooling() {
               <ParamField label="Coolant density" k="cooling.film_coolant_density" def={5} step={0.5} unit="kg/m³" />
               <ParamField label="Coolant velocity" k="cooling.film_coolant_velocity" def={120} step={10} dim="velocity" baseUnit="m/s" hint="used when film fraction = 0; higher velocity → thicker film" />
               <ParamField label="Slot height" k="cooling.film_slot_height_mm" def={1.5} step={0.1} dim="length" baseUnit="mm" />
-              <ParamField label="Injection x" k="cooling.film_injection_x_m" def={0} step={0.01} dim="length" baseUnit="m" hint="axial start of the film" />
+              <ParamField label="Injection x" k="cooling.film_injection_x_m" def={-(l0Len ?? 0)} step={0.01} dim="length" baseUnit="m" hint="axial start of the film (throat at 0; default: injector face at −L_c)" />
             </>}
             {method === "ablative" && <>
               <ParamChoice label="Ablative material" k="cooling.ablative_material" def="Carbon phenolic" options={["Carbon phenolic", "Silica phenolic"]} />

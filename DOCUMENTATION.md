@@ -63,10 +63,13 @@ The main window has a left **Design** panel, a center **tabbed viewer**, and a r
 - Quasi-1D isentropic nozzle flow (area–Mach, pressure/temperature ratios).
 - **True Rao thrust-optimized (TOP) bell**: downstream throat arc + method-of-characteristics/quadratic-Bézier parabola using Rao θn/θe chart angles — not just a parabolic approximation.
 - Conical nozzle option with divergence-loss correction.
-- Exit Mach/pressure/temperature, divergence (λ) and boundary-layer corrections, delivered Isp.
+- Exit Mach/pressure/temperature, divergence (λ) and boundary-layer corrections, delivered Isp in vacuum, at sea level, and at matched expansion (pₐ = pₑ).
 
 ### 3.3 Cooling (cooling)
-- **Regenerative** cooling with per-station heat flux, hot/cold wall temperatures, coolant ΔP, boiling margin.
+- **Regenerative** cooling over the whole inner wall (chamber barrel, convergent, throat, nozzle) with per-station heat flux, hot/cold wall temperatures and coolant ΔP. Heat conducts through a thin hot-wall liner (`cooling.liner_thickness_mm`, default 1 mm), not the pressure shell.
+- **Coolant**: the engine's own fuel by default (RP-1, gasoline, ethanol, methanol, methane, hydrogen, propane, MMH, UDMH — per-fluid properties), carrying the full fuel flow; or water for a test-stand jacket (`cooling.coolant`). The annular gap is sized for a design throat velocity (default 20 m/s liquids, 30 m/s methane, 100 m/s hydrogen); with discrete channels the velocity follows from the channel area. Coolant pressure defaults to 1.5× Pc.
+- **Coolant-side limit**: boiling below the coolant's critical pressure; above it the coking (RP-1 589 K, methane 900 K) or decomposition limit, or none for hydrogen — approximate values, overridable via `cooling.coolant_limit_k`.
+- **Stress acceptance**: hoop (primary) stress ≤ the material allowable S, and hoop + through-wall thermal (secondary) stress ≤ 2S (shakedown). The L0 pressure shell is sized from the chamber material's allowable with `structures.wall_safety_factor` (default 1.5).
 - **Film**, **radiation**, and **ablative** cooling strategies.
 - **Material database**: OFHC Copper, CuCrZr, Inconel 718, SS 316L, Niobium C-103, Carbon-Carbon (+ Silica/Carbon-Phenolic ablatives) — conductivity, service temp, allowable stress, CTE, emissivity.
 - **Multi-material / functionally-graded additive-manufacturing (AM) build plan**: splits the engine into axial regions (chamber barrel, precision throat, diverging nozzle, radiation skirt), assigns each an AM process (LPBF green-laser for copper, inert-preheat for refractory, etc.), and inserts a **functionally-graded transition** at each dissimilar-material seam (blend length scaled by CTE mismatch). Rendered as a 3D region-banded engine.
@@ -120,12 +123,12 @@ Beyond the top-level requirements, **every subsystem assumption is a user input*
 
 **Per-subsystem inputs (dotted `namespace.key` design parameters):**
 - **Blades** (`blade.*`): pump blade count Z, outlet blade angle β₂, inlet axial velocity, pump efficiency, impeller material, inducer hub ratio; turbine blade count, nozzle angle α, drive-gas cp/Tin/γ/pressure-ratio, GG flow fraction; supersonic blade count; loss knobs (clearance, aspect ratio, U/C₀).
-- **Turbopumps** (`turbo.*`): pump/turbine efficiency, suction specific speed, inducer hub ratio, tank & discharge pressure, GG flow fraction, drive-gas cp/γ/Tin, turbine exit pressure, bearing bore/DN limit/life, shaft allowable shear.
+- **Turbopumps** (`turbo.*`): pump/turbine efficiency, suction specific speed, inducer hub ratio, tank & discharge pressure, GG flow fraction, drive-gas cp/γ/Tin, turbine exit pressure, bearing bore (default: shaft diameter rounded up to a 5 mm size)/DN limit/life, shaft allowable shear, shaft critical-speed ratio (default 1.25 — the shaft is stiffened to run subcritical).
 - **Feed** (`feed.*`): injector ΔP fraction, line ΔP, pump-fed tank pressure, tank L/D, ullage factor, wall allowable/density, test factor, pressurant gas/factor/bottle pressure.
 - **Avionics** (`avionics.*`): bus voltage, redundancy (single/dual), battery reserve factor, battery specific energy, housekeeping current, main-valve & igniter current, wire-run override.
-- **Control** (`control.*`): Pc & MR loop bandwidths, sample rate, combustion dead time, throttle step target, turbine-temperature redline.
-- **Injector** (`injector.*`): element type/count, ΔP fraction, discharge coefficient, surface tension, fuel/ox density ratio, combustion time lag τ, interaction index n.
-- **Cooling detail** (`cooling.*`): film coolant temperature/density/velocity/slot height/injection point, ablative material/burn time/safety factor, radiation ambient temperature.
+- **Control** (`control.*`): Pc & MR loop bandwidths, sample rate (default 500 Hz), combustion dead time, throttle step target, turbine-temperature redline.
+- **Injector** (`injector.*`): element type (default by propellant: unlike doublet for hypergols/alcohols, like doublet for liquid hydrocarbons and nitrous, coaxial for GOX and cryogenic fuels)/count (default ≈ 1 per kN of thrust), ΔP fraction, discharge coefficient, surface tension, fuel/ox density ratio, combustion time lag τ, interaction index n.
+- **Cooling detail** (`cooling.*`): coolant (fuel/water), coolant velocity/pressure, liner thickness, channel count/size, coolant limit override, film coolant temperature/density/velocity/slot height/injection point (default: the injector face), ablative material/burn time/safety factor, radiation ambient temperature.
 
 ---
 

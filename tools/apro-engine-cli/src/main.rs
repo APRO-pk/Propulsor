@@ -9,7 +9,7 @@
 
 use engine_core::{EngineDesign, PropellantPair};
 use propellants::props_for;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Options gathered from argv.
 struct Opts {
@@ -229,7 +229,7 @@ fn cmd_trade(_opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
 fn cmd_thrustcurve(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     let d = sizing_l0::krzycki_golden_design();
     let csv = export::thrust_curve_csv(&d, 3.0);
-    let path = if opts.out.as_os_str().is_empty() || opts.out == PathBuf::from("engine.apro-engine.ron") {
+    let path = if opts.out.as_os_str().is_empty() || opts.out == Path::new("engine.apro-engine.ron") {
         PathBuf::from("thrust_curve.csv")
     } else {
         opts.out.clone()
@@ -320,7 +320,7 @@ fn cmd_contour(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     };
     let l2 = gasdynamics::solve_l2(&input);
     let csv = export::contour_csv(&l2.stations);
-    let path = if opts.out.as_os_str().is_empty() || opts.out == PathBuf::from("engine.apro-engine.ron") {
+    let path = if opts.out.as_os_str().is_empty() || opts.out == Path::new("engine.apro-engine.ron") {
         PathBuf::from("contour.csv")
     } else {
         opts.out.clone()
@@ -379,6 +379,7 @@ fn cmd_turbopump(_opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         length_m: 0.35,
         youngs_modulus_pa: 200.0e9,
         lumped_mass_kg: 6.0,
+        min_critical_ratio: 1.25,
     });
     println!("Shaft: {}", shaft.summary());
 
@@ -590,7 +591,7 @@ fn cmd_cooling(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     println!("Ablative liner (carbon-phenolic): {}", abl.summary());
 
     // Heat-flux CSV for FEM boundary conditions.
-    let path = if opts.out.as_os_str().is_empty() || opts.out == PathBuf::from("engine.apro-engine.ron") {
+    let path = if opts.out.as_os_str().is_empty() || opts.out == Path::new("engine.apro-engine.ron") {
         PathBuf::from("heat_flux.csv")
     } else {
         opts.out.clone()
@@ -629,7 +630,7 @@ fn cmd_safety(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     print!("{}", export::safety_checklist(&d));
 
     let svg = export::pid_svg(&d);
-    let path = if opts.out.as_os_str().is_empty() || opts.out == PathBuf::from("engine.apro-engine.ron") {
+    let path = if opts.out.as_os_str().is_empty() || opts.out == Path::new("engine.apro-engine.ron") {
         PathBuf::from("pid.svg")
     } else {
         opts.out.clone()

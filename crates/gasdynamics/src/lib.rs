@@ -62,7 +62,15 @@ pub struct L2Result {
     pub throat_diameter_m: f64,
     pub divergence_correction: f64,
     pub boundary_layer_correction: f64,
+    /// Delivered Isp at the design ambient: the expansion target's ambient
+    /// pressure, or — for a fixed area ratio — matched expansion (p_amb = p_e).
     pub isp_s: f64,
+    /// Delivered Isp in vacuum (same losses), s.
+    #[serde(default)]
+    pub isp_vac_s: f64,
+    /// Delivered Isp at sea level (101 325 Pa, same losses), s.
+    #[serde(default)]
+    pub isp_sl_s: f64,
     pub c_star_m_s: f64,
     /// Rao bell initial parabola angle θ_n (deg); 0 for conical.
     #[serde(default)]
@@ -162,8 +170,11 @@ pub fn solve_l2(input: &L2Input) -> L2Result {
 
     // Apply combustion/c* efficiency.
     let c_star_eff = input.c_star_m_s * input.c_star_efficiency.clamp(0.0, 1.0);
-    let cf = cf_ideal * divergence;
-    let isp = c_star_eff * cf / 9.80665 * bl * if input.shifting_bonus > 0.0 { input.shifting_bonus } else { 1.0 };
+    let shifting = if input.shifting_bonus > 0.0 { input.shifting_bonus } else { 1.0 };
+    let isp_at = |cf_ideal: f64| c_star_eff * cf_ideal * divergence / 9.80665 * bl * shifting;
+    let isp = isp_at(cf_ideal);
+    let isp_vac = isp_at(optimize::thrust_coefficient(g, pc, area_ratio, 0.0));
+    let isp_sl = isp_at(optimize::thrust_coefficient(g, pc, area_ratio, 101_325.0));
 
     let stations = match input.nozzle_type {
         NozzleType::Conical => contour::conical_contour(r_t, r_e, input.exit_half_angle_deg, 60),
@@ -181,6 +192,8 @@ pub fn solve_l2(input: &L2Input) -> L2Result {
         divergence_correction: divergence,
         boundary_layer_correction: bl,
         isp_s: isp,
+        isp_vac_s: isp_vac,
+        isp_sl_s: isp_sl,
         c_star_m_s: c_star_eff,
         bell_theta_n_deg: if input.nozzle_type == NozzleType::Bell { theta_n_deg } else { 0.0 },
         bell_theta_e_deg: if input.nozzle_type == NozzleType::Bell { theta_e_deg } else { 0.0 },
@@ -239,6 +252,8 @@ mod tests {
         };
         let iac = solve_l2(&base);
         let fac = solve_l2(&L2Input { contraction_ratio: 2.5, ..base.clone() });
+        // Vacuum (p_a = 0) bounds every finite-ambient Isp of the same nozzle.
+        assert!(iac.isp_vac_s >= iac.isp_s && iac.isp_vac_s > iac.isp_sl_s, "{} {} {}", iac.isp_vac_s, iac.isp_s, iac.isp_sl_s);
 
         // A tight (2.5) contraction gives a subsonic chamber Mach and a few-percent
         // stagnation-pressure loss, so delivered Isp is slightly lower than the IAC.

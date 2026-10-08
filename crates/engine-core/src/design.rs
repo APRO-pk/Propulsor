@@ -372,15 +372,7 @@ impl EngineDesign {
                     self.choices.insert(field.to_string(), s.clone());
                 }
             }
-            let root = if field.starts_with("reactant.") {
-                Some(Tier::L1)
-            } else if field.starts_with("thermo.") {
-                Some(Tier::L2)
-            } else if field.starts_with("cooling.") || field.starts_with("material.") {
-                Some(Tier::L3)
-            } else {
-                None
-            };
+            let root = tier_root_for_param(field);
             if let Some(t) = root {
                 crate::provenance::mark_stale_from_root(self, t);
             }
@@ -443,9 +435,11 @@ impl EngineDesign {
                 self.geometry.nozzle.get_or_insert_with(Default::default).kind = Some(k);
                 Tier::L2
             }
+            // The chamber material sets the L0 pressure-shell thickness (its
+            // allowable stress) as well as the L3+ thermal solve.
             "wall_material" | "chamber_material" => {
                 self.materials.chamber = Some(text(&value)?);
-                Tier::L3
+                Tier::L0
             }
             "nozzle_material" => {
                 self.materials.nozzle = Some(text(&value)?);
@@ -471,6 +465,26 @@ impl EngineDesign {
     /// Parse a RON project file body through the migration pass.
     pub fn from_ron(raw: &str) -> Result<Self, EngineError> {
         crate::provenance::from_ron(raw)
+    }
+}
+
+/// The lowest tier a dotted design param/choice feeds, or `None` when only the
+/// on-demand studies read it: material.*/structures.* → L0 (pressure-shell
+/// sizing), reactant.* → L1 (thermochemistry), thermo.* → L2 (nozzle flow),
+/// cooling.* → L3 (cooling).
+pub fn tier_root_for_param(key: &str) -> Option<crate::tier::Tier> {
+    use crate::tier::Tier;
+    if key.starts_with("reactant.") {
+        Some(Tier::L1)
+    } else if key.starts_with("thermo.") {
+        Some(Tier::L2)
+    } else if key.starts_with("material.") || key.starts_with("structures.") {
+        // Custom-material properties and the shell safety factor size the L0 wall.
+        Some(Tier::L0)
+    } else if key.starts_with("cooling.") {
+        Some(Tier::L3)
+    } else {
+        None
     }
 }
 
