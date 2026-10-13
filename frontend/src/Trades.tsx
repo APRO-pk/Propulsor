@@ -110,13 +110,13 @@ export function Trades() {
         <fieldset className="qt-groupbox">
           <legend>Injector trade-off (element count)</legend>
           <table className="qt-proptable">
-            <thead><tr><th>Elements</th><th>v_inj</th><th>SMD</th><th>MR</th><th>Stable</th></tr></thead>
+            <thead><tr><th>Elements</th><th>v_inj</th><th title="mass-median drop diameter (Priem–Heidmann)">MMD</th><th>MR</th><th>Stable</th></tr></thead>
             <tbody>
               {t.injector_trade.map((r) => (
                 <tr key={r.element_count}>
                   <td>{r.element_count}</td>
                   <td className="val">{r.injection_velocity_m_s.toFixed(1)} m/s</td>
-                  <td className="val">{r.smd_um.toFixed(0)} µm</td>
+                  <td className="val">{r.mmd_um.toFixed(0)} µm</td>
                   <td className="val">{r.momentum_ratio.toFixed(2)}</td>
                   <td className="val"><span className={`qt-badge ${r.stable ? "solved" : "failed"}`}>{r.stable ? "OK" : "check"}</span></td>
                 </tr>

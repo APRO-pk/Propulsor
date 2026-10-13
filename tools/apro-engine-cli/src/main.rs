@@ -522,6 +522,7 @@ fn cmd_cooling(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         coolant_velocity_m_s: 20.0,
         coolant_pressure_pa: 5.0e6,
         film_cooling: None,
+        deposit_resistance_m2k_w: 0.0,
     };
     let cu = cooling::solve_l3(&base)?;
     println!("\nRegen (OFHC copper): {}", cu.summary());

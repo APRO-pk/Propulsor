@@ -8,6 +8,7 @@
 pub mod efficiency;
 pub mod flow;
 pub mod instability;
+pub mod liquids;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct InjectorResult {

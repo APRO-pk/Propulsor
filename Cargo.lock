@@ -52,6 +52,7 @@ dependencies = [
  "engine-core",
  "gasdynamics",
  "serde",
+ "serde_json",
  "thermo",
 ]
 
