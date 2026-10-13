@@ -11,6 +11,19 @@ import { useSyncExternalStore } from "react";
  * preview), so the "is Tauri present?" check is runtime-only.
  */
 
+import {
+  defaultMixingEfficiency,
+  fractionVaporized,
+  generalizedLengthCm,
+  liquidsFor,
+  massMedianRadiusUm,
+  sprayFamily,
+  vaporizationModelApplies,
+  type Liquid,
+  type Phase,
+} from "./vaporization";
+export type { Liquid, Phase } from "./vaporization";
+
 /// Result envelope of the `get_design` IPC command.
 export interface EngineDesignDto {
   meta: DesignMetaDto;
@@ -160,6 +173,31 @@ export interface MaterialDto {
   cooling_class: "Regenerative" | "Radiation" | "Ablative";
 }
 
+/** Mirrors Rust `cooling::CoolantReport`: the regen coolant and its governing limit. */
+export interface CoolantReportDto {
+  name: string;
+  source: string;
+  inlet_temp_k: number;
+  inlet_pressure_pa: number;
+  /** Jacket outlet pressure (inlet − friction drop). */
+  outlet_pressure_pa: number;
+  critical_pressure_pa: number;
+  supercritical: boolean;
+  saturation_temp_k: number | null;
+  coking_limit_k: number | null;
+  limit_kind: "boiling" | "coking" | "none";
+  limit_k: number | null;
+  mass_flow_kg_s: number;
+  outlet_temp_k: number;
+  inlet_velocity_m_s: number;
+  max_velocity_m_s: number;
+  flow_area_m2: number;
+  hydraulic_diameter_m: number;
+  correlation: string;
+  property_basis: string;
+  note: string;
+}
+
 export interface CoolingStudyDto {
   materials: MaterialDto[];
   selected_material: string;
@@ -167,14 +205,14 @@ export interface CoolingStudyDto {
   regen: {
     max_wall_temp_k: number;
     wall_material_limit_k: number;
-    min_boiling_margin_k: number;
+    /** null when the jacket is supercritical (no boiling). */
+    min_boiling_margin_k: number | null;
+    /** Margin to the governing coolant limit (boiling or coking); null when none applies. */
+    min_coolant_margin_k: number | null;
     coolant_dp_pa: number;
-    coolant_name?: string;
-    coolant_limit_kind?: "boiling" | "coking" | "decomposition" | "none";
-    coolant_limit_k?: number | null;
-    coolant_mass_flow_kg_s?: number;
-    coolant_velocity_m_s?: number;
-    coolant_gap_m?: number;
+    /** Hot-gas wall (liner) thickness the heat crosses, m. */
+    wall_thickness_m: number;
+    coolant: CoolantReportDto;
     stations: { x: number; r: number; heat_flux_w_m2: number; wall_temp_k: number }[];
   };
   film?: { blowing_ratio: number; effectiveness: number; adiabatic_wall_temp_k: number; effective_length_m: number } | null;
@@ -274,7 +312,7 @@ export interface TradeBundleDto {
   l_star_sweep: { l_star_m: number; chamber_length_m: number; chamber_volume_l: number }[];
   recommended_l_star_m: number;
   material_trade: { name: string; max_wall_temp_k: number; limit_k: number; margin_k: number; density_kg_m3: number; cooling_class: string; ok: boolean }[];
-  injector_trade: { element_count: number; injection_velocity_m_s: number; smd_um: number; momentum_ratio: number; stable: boolean }[];
+  injector_trade: { element_count: number; injection_velocity_m_s: number; mmd_um: number; momentum_ratio: number; stable: boolean }[];
 }
 
 interface TankSpecDto {
@@ -326,10 +364,21 @@ export interface AvionicsHarnessDto {
 }
 
 interface SideFlowDto {
+  phase: Phase;
   injection_velocity_m_s: number;
   orifice_diameter_m: number;
   weber_number: number;
-  sauter_mean_diameter_m: number;
+  /** Mass-median droplet diameter (0 for a gas-injected side). */
+  mass_median_diameter_m: number;
+}
+
+export interface InjectorDefaultsDto {
+  element_count: number;
+  mixing_efficiency: number;
+  ox_liquid: Liquid;
+  fuel_liquid: Liquid;
+  ox_phase: Phase;
+  fuel_phase: Phase;
 }
 
 export interface AnalysisStudyDto {
@@ -358,16 +407,27 @@ export interface AnalysisStudyDto {
   };
   stress_csv: string;
   ere: EreResultDto;
+  injector_defaults: InjectorDefaultsDto;
+}
+
+export interface SideVaporizationDto {
+  propellant: string;
+  phase: Phase;
+  drop_radius_um: number;
+  generalized_length_cm: number;
+  fraction_vaporized: number;
 }
 
 export interface EreResultDto {
-  residence_time_ms: number;
-  required_time_ms: number;
-  residence_efficiency: number;
-  atomization_efficiency: number;
+  applicable: boolean;
+  ox: SideVaporizationDto;
+  fuel: SideVaporizationDto;
+  vaporized_mixture_ratio: number;
+  vaporization_efficiency: number;
   mixing_efficiency: number;
   energy_release_efficiency: number;
   c_star_efficiency: number;
+  flags: string[];
   summary: string;
 }
 
@@ -491,18 +551,6 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
   }
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<T>(cmd, args);
-}
-
-/** ~1 element per kN, 6–600 (mirrors simulate::design::default_element_count). */
-export function defaultElementCount(thrustN: number): number {
-  return Math.min(600, Math.max(6, Math.round(thrustN / 1000)));
-}
-
-/** Default injector element per propellant pair (mirrors simulate::design::default_element_type). */
-export function defaultElementType(pair: string): string {
-  if (["NtoMmh", "NtoUdmh", "LoxEthanol", "Unset", ""].includes(pair)) return "UnlikeDoublet";
-  if (["LoxRp1", "H2o2Kerosene", "NitrousPropane"].includes(pair)) return "LikeDoublet";
-  return "Coaxial";
 }
 
 /** Persist a single field edit and get the re-resolved design back. */
@@ -985,8 +1033,21 @@ function mockIssues(): IssuesReportDto {
   const c = mockCooling(material, method);
   if (c.regen.max_wall_temp_k > c.regen.wall_material_limit_k)
     add("fail", "Cooling", `Wall temperature ${c.regen.max_wall_temp_k.toFixed(0)} K exceeds the ${c.selected_material} limit ${c.regen.wall_material_limit_k.toFixed(0)} K (margin ${(c.regen.wall_material_limit_k - c.regen.max_wall_temp_k).toFixed(0)} K)`);
-  if (c.regen.min_boiling_margin_k < 0)
-    add("fail", "Cooling", `Coolant boils — boiling margin ${c.regen.min_boiling_margin_k.toFixed(0)} K`);
+  const cr = c.regen.coolant;
+  const cm = c.regen.min_coolant_margin_k;
+  if (cm !== null && cm < 0) {
+    const what = cr.limit_kind === "coking"
+      ? `${cr.name} cokes — coolant-side wall exceeds the ${(cr.limit_k ?? 0).toFixed(0)} K coking limit`
+      : `${cr.name} boils — coolant-side wall exceeds T_sat ${(cr.limit_k ?? 0).toFixed(0)} K`;
+    add("fail", "Cooling", `${what} (margin ${cm.toFixed(0)} K at ${(cr.inlet_pressure_pa / 1e5).toFixed(1)} bar)`);
+  }
+  // A propellant coolant flows on to the injector: the jacket drop must fit in the
+  // pressure budget (jacket inlet − Pc − 20 % injector drop), as in Rust.
+  if (method === "regen" && cr.name !== "Water") {
+    const allowed = cr.inlet_pressure_pa - pc * (1 + INJECTOR_DP_FRACTION);
+    if (c.regen.coolant_dp_pa > allowed)
+      add("warn", "Cooling", `Jacket ΔP ${(c.regen.coolant_dp_pa / 1e5).toFixed(1)} bar exceeds the ${(Math.max(0, allowed) / 1e5).toFixed(1)} bar left in the pressure budget (jacket inlet ${(cr.inlet_pressure_pa / 1e5).toFixed(1)} bar − Pc − 20 % injector drop) — raise the jacket pressure or enlarge the passages`);
+  }
   if (method === "regen") {
     const mat = MOCK_MATERIALS.find((m) => m.name === material);
     if (mat && mat.cooling_class !== "Regenerative") add("warn", "Cooling", `${material} is a ${mat.cooling_class}-class material but regenerative cooling is selected`);
@@ -1062,14 +1123,16 @@ function mockTrade(): TradeBundleDto {
     const wall = (620 + 9000 / m.thermal_conductivity_w_m_k) * Math.pow(pc / 2e6, 0.15);
     return { name: m.name, max_wall_temp_k: wall, limit_k: m.max_service_temp_k, margin_k: m.max_service_temp_k - wall, density_kg_m3: m.density_kg_m3, cooling_class: m.cooling_class, ok: wall <= m.max_service_temp_k };
   });
-  const oxRho = (COMPONENT_DENSITY[liveDesign.propellant.pair] ?? [1140, 800])[0];
-  const of = liveDesign.operating_point.mixture_ratio || ofPeak;
+  const [[oxLiq], [fuLiq, fuPhase]] = liquidsFor(liveDesign.propellant.pair);
   const injector_trade = [8, 16, 24, 32, 48, 64].map((n) => {
-    const v = 0.7 * Math.sqrt((2 * 0.2 * pc) / oxRho);
-    const d = Math.sqrt((4 * ((l0?.oxidizer_flow ?? 1.5) / (oxRho * v))) / (n * Math.PI));
-    const we = (2 * v * v * d) / 0.02;
-    const mr = of * Math.sqrt(0.72); // ox/fuel momentum ratio (fuel ≈ 0.72·ox density)
-    return { element_count: n, injection_velocity_m_s: v, smd_um: d * 3 * Math.pow(Math.max(we, 1), -0.4) * 1e6, momentum_ratio: mr, stable: v >= 15 && v <= 60 };
+    // Unlike-doublet sweep; drop size of the atomizing (liquid) side.
+    const [atomLiq, flow] = fuPhase === "Liquid" ? [fuLiq, l0?.fuel_flow ?? 0.6] : [oxLiq, l0?.oxidizer_flow ?? 1.5];
+    const vOx = 0.7 * Math.sqrt((2 * 0.2 * pc) / oxLiq.density_kg_m3);
+    const vFu = 0.7 * Math.sqrt((2 * 0.2 * pc) / fuLiq.density_kg_m3);
+    const v = 0.7 * Math.sqrt((2 * 0.2 * pc) / atomLiq.density_kg_m3);
+    const d = Math.sqrt((4 * (flow / (atomLiq.density_kg_m3 * v))) / (n * Math.PI));
+    const mr = ((l0?.oxidizer_flow ?? 1.5) * vOx) / ((l0?.fuel_flow ?? 0.6) * vFu);
+    return { element_count: n, injection_velocity_m_s: vFu, mmd_um: 2 * massMedianRadiusUm("ImpingingJets", d, atomLiq), momentum_ratio: mr, stable: v >= 15 && v <= 60 };
   });
   return { of_sweep, optimal_of: ofPeak, expansion_sweep, optimal_area_ratio: 29, l_star_sweep, recommended_l_star_m: props.lStar, material_trade, injector_trade };
 }
@@ -1205,24 +1268,38 @@ function mockAnalysis(): AnalysisStudyDto {
   const pc = liveDesign.operating_point.chamber_pressure;
   const mat = mockMaterial(String(liveDesign.materials?.chamber || "OFHC Copper"));
   const dpFrac = pval("injector.dp_fraction", 0.2);
-  const nElem = Math.round(pval("injector.element_count", defaultElementCount(liveDesign.operating_point.thrust)));
   const cd = pval("injector.discharge_coefficient", 0.7);
-  const sigma = pval("injector.surface_tension_n_m", 0.02);
-  const fuelDensFactor = pval("injector.fuel_density_factor", 0.72);
-  const elementType = pchoice("injector.element_type", defaultElementType(liveDesign.propellant.pair));
+  const elementType = pchoice("injector.element_type", "Triplet");
   const dp = dpFrac * pc;
-  // Real propellant densities + chamber gas density (from Pc / R·Tc).
-  const oxRho = (COMPONENT_DENSITY[liveDesign.propellant.pair] ?? [1140, 800])[0];
+  const pair = liveDesign.propellant.pair;
+  // Per-propellant liquids (sourced table, mirrors crates/injector/src/liquids.rs) + overrides.
+  const [[oxLiq, oxPhase0], [fuLiq, fuPhase0]] = liquidsFor(pair);
+  const phaseOf = (k: string, d: Phase): Phase => { const c = pchoice(k, "Auto"); return c === "Gas" || c === "Liquid" ? c : d; };
+  const oxPhase = phaseOf("injector.ox_phase", oxPhase0);
+  const fuPhase = phaseOf("injector.fuel_phase", fuPhase0);
+  const defaults: InjectorDefaultsDto = { element_count: 1, mixing_efficiency: defaultMixingEfficiency(elementType), ox_liquid: { ...oxLiq }, fuel_liquid: { ...fuLiq }, ox_phase: oxPhase0, fuel_phase: fuPhase0 };
+  for (const [liq, sideKey] of [[oxLiq, "ox"], [fuLiq, "fuel"]] as const) {
+    liq.surface_tension_n_m = pval(`injector.${sideKey}_surface_tension_n_m`, liq.surface_tension_n_m);
+    liq.viscosity_pa_s = pval(`injector.${sideKey}_viscosity_mpa_s`, liq.viscosity_pa_s * 1e3) * 1e-3;
+  }
+  // Default element count: 1.40 mm atomizing-side orifices (Pavli TM-79319 No. 250-2).
+  const [atomLiq, atomFlow] = fuPhase === "Liquid" ? [fuLiq, l0?.fuel_flow ?? 0.6] : [oxLiq, l0?.oxidizer_flow ?? 1.5];
+  const vAtom = cd * Math.sqrt((2 * dp) / atomLiq.density_kg_m3);
+  defaults.element_count = Math.min(2000, Math.max(1, Math.ceil(atomFlow / (atomLiq.density_kg_m3 * vAtom * (Math.PI / 4) * 1.4e-3 ** 2))));
+  const nElem = Math.round(pval("injector.element_count", defaults.element_count));
+  const [family, extrapolated] = sprayFamily(elementType);
   const gasRho = pc / ((8314.462 / 24) * (l0?.tc_k ?? 3400));
-  const side = (mdot: number, density: number) => {
-    const v = cd * Math.sqrt((2 * dp) / density);
-    const d = Math.sqrt((4 * (mdot / (density * v))) / (nElem * Math.PI));
-    const we = (gasRho * v * v * d) / sigma;
-    return { injection_velocity_m_s: v, orifice_diameter_m: d, weber_number: we, sauter_mean_diameter_m: d * 3 * Math.pow(Math.max(we, 1), -0.4) };
+  const side = (mdot: number, liq: Liquid, phase: Phase) => {
+    const v = cd * Math.sqrt((2 * dp) / liq.density_kg_m3);
+    const d = Math.sqrt((4 * (mdot / (liq.density_kg_m3 * v))) / (nElem * Math.PI));
+    const we = (gasRho * v * v * d) / liq.surface_tension_n_m;
+    const mmd = phase === "Liquid" ? 2 * massMedianRadiusUm(family, d, liq) * 1e-6 : 0;
+    return { phase, injection_velocity_m_s: v, orifice_diameter_m: d, weber_number: we, mass_median_diameter_m: mmd };
   };
-  const ox = side(l0?.oxidizer_flow ?? 1.5, oxRho);
-  // Fuel density mirrors Rust: ox density × injector.fuel_density_factor.
-  const fuel = side(l0?.fuel_flow ?? 0.6, oxRho * fuelDensFactor);
+  const ox = side(l0?.oxidizer_flow ?? 1.5, oxLiq, oxPhase);
+  const fuel = side(l0?.fuel_flow ?? 0.6, fuLiq, fuPhase);
+  const injFlags: string[] = [];
+  if (extrapolated) injFlags.push(`${elementType} drop size uses the ${family} line of CR-168066 Fig. 27 (measured for like doublets/triplets)`);
 
   const chamberD = l0?.chamber_diameter ?? 0.14;
   const chamberL = l0?.chamber_length ?? 0.25;
@@ -1263,37 +1340,46 @@ function mockAnalysis(): AnalysisStudyDto {
   const maxC = Math.max(...stations.map((s) => s.combined_stress_pa));
   const minM = Math.min(...stations.map((s) => s.margin));
 
-  // Computed combustion (c*) efficiency — ERE (mirrors the Rust model).
-  const smd = 0.5 * (ox.sauter_mean_diameter_m + fuel.sauter_mean_diameter_m);
-  const throatA = l0?.throat_area ?? Math.PI * rt * rt;
-  const lStar = (l0?.chamber_volume ?? throatA * 1.0) / Math.max(throatA, 1e-9);
-  const rSpec = 8314.462 / 22; // R_specific with a representative MW ≈ 22 g/mol
-  const tc = l0?.tc_k ?? 3400;
-  const gasDensity = pc / (rSpec * tc);
-  const mdotTot = l0?.total_flow ?? 2.0;
-  const tauRes = (gasDensity * lStar * throatA) / Math.max(mdotTot, 1e-6);
-  const REQ_MS = 0.6, SMD_REF = 250e-6;
-  const res = Math.min(0.9995, Math.max(0.3, 1 - Math.exp(-tauRes / (REQ_MS * 1e-3))));
-  const atom = Math.min(0.999, Math.max(0.7, 1 - 0.28 * Math.max(0, smd / SMD_REF - 1)));
-  const mix = Math.min(0.999, Math.max(0.7, 1 - 0.04 / (Math.pow(nElem / 20, 0.4) * Math.pow(dpFrac / 0.2, 0.3))));
-  const ereVal = Math.min(0.9995, Math.max(0.4, res * atom * mix));
+  // Computed combustion (c*) efficiency — Priem–Heidmann vaporization (mirrors Rust;
+  // the mock has no equilibrium solver, so the c*(MR_v)/c*(MR) ratio is taken as 1).
+  const cr = (chamberD / (l0?.throat_diameter ?? 2 * rt)) ** 2;
+  const mr = (l0?.oxidizer_flow ?? 1.5) / Math.max(l0?.fuel_flow ?? 0.6, 1e-9);
+  const ereFlags: string[] = [];
+  const notApplicable = vaporizationModelApplies(pair);
+  if (notApplicable) ereFlags.push(`combustion efficiency not computed: ${notApplicable}`);
+  const vap = (liq: Liquid, phase: Phase, sf: { mass_median_diameter_m: number; injection_velocity_m_s: number }): SideVaporizationDto => {
+    if (phase === "Gas") return { propellant: liq.name, phase, drop_radius_um: 0, generalized_length_cm: 0, fraction_vaporized: 1 };
+    const r = sf.mass_median_diameter_m * 0.5e6;
+    const lg = generalizedLengthCm(pc, cr, chamberL, liq, r, sf.injection_velocity_m_s);
+    return { propellant: liq.name, phase, drop_radius_um: r, generalized_length_cm: lg, fraction_vaporized: fractionVaporized(lg) };
+  };
+  const vOx = vap(oxLiq, oxPhase, ox);
+  const vFu = vap(fuLiq, fuPhase, fuel);
+  const fo = Math.max(vOx.fraction_vaporized, 1e-6), ff = Math.max(vFu.fraction_vaporized, 1e-6);
+  const mrV = Math.min(mr * 20, Math.max(mr / 20, (mr * fo) / ff));
+  const etaVap = Math.min(1, (fo * mr + ff) / (mr + 1));
+  const etaMix = Math.min(1, Math.max(0.5, pval("injector.mixing_efficiency", defaults.mixing_efficiency)));
+  const ereVal = Math.min(1, Math.max(0.3, etaVap * etaMix));
   const ere: EreResultDto = {
-    residence_time_ms: tauRes * 1000,
-    required_time_ms: REQ_MS,
-    residence_efficiency: res,
-    atomization_efficiency: atom,
-    mixing_efficiency: mix,
+    applicable: !notApplicable,
+    ox: vOx,
+    fuel: vFu,
+    vaporized_mixture_ratio: mrV,
+    vaporization_efficiency: etaVap,
+    mixing_efficiency: etaMix,
     energy_release_efficiency: ereVal,
     c_star_efficiency: ereVal,
-    summary: `ERE=${(ereVal * 100).toFixed(1)}% (η_res=${(res * 100).toFixed(1)}% η_atom=${(atom * 100).toFixed(1)}% η_mix=${(mix * 100).toFixed(1)}%) | τ_res=${(tauRes * 1000).toFixed(2)} ms vs τ_req=${REQ_MS.toFixed(2)} ms, SMD=${(smd * 1e6).toFixed(0)} µm`,
+    flags: ereFlags,
+    summary: notApplicable ? "ERE not computed (vaporization model does not apply)" : `ERE=${(ereVal * 100).toFixed(1)}% (η_vap=${(etaVap * 100).toFixed(1)}% η_mix=${(etaMix * 100).toFixed(1)}%) | vaporized ox ${(fo * 100).toFixed(1)}% fuel ${(ff * 100).toFixed(1)}%, MR_v=${mrV.toFixed(2)}`,
   };
 
   return {
-    injector: { pressure_drop_pa: dp, ox, fuel, momentum_ratio: ((l0?.oxidizer_flow ?? 1.5) * ox.injection_velocity_m_s) / ((l0?.fuel_flow ?? 0.6) * fuel.injection_velocity_m_s), element_type: elementType, flags: [] },
+    injector: { pressure_drop_pa: dp, ox, fuel, momentum_ratio: ((l0?.oxidizer_flow ?? 1.5) * ox.injection_velocity_m_s) / ((l0?.fuel_flow ?? 0.6) * fuel.injection_velocity_m_s), element_type: elementType, flags: injFlags },
     instability: { modes, dominant_mode: dom.name, dominant_frequency_hz: dom.frequency_hz, regime, stability_margin: margin, stable: margin > 0, notes: regime === "acoustic" ? ["High-frequency (1T) risk — consider baffles"] : [] },
     stress: { stations, max_combined_stress_pa: maxC, min_margin: minM, yields: minM < 1 },
     stress_csv: "x_m,r_m,combined_pa,margin\n(browser-dev mock)\n",
     ere,
+    injector_defaults: defaults,
   };
 }
 
@@ -1576,6 +1662,94 @@ function mockAblative(): { recession_rate_m_s: number; total_recession_m: number
   return { recession_rate_m_s: rate, total_recession_m: total, required_thickness_m: req, liner_mass_per_area_kg_m2: req * density };
 }
 
+/**
+ * Regen coolants for the browser-dev mock — mirrors Rust `cooling::coolants`
+ * at the inlet state (rocketprops / NIST values; Tb/Tc in K, Pcrit in Pa, cp in
+ * J/(kg·K), coking limit from NASA CR-165405 for RP-1). The Rust solver uses the
+ * full temperature-dependent tables; the mock keeps inlet properties.
+ */
+interface MockCoolant { name: string; rho: number; k: number; cp: number; tin: number; tb: number; tc: number; pcrit: number; coking: number | null; source: string }
+const MOCK_COOLANTS: Record<string, MockCoolant> = {
+  water:    { name: "Water", rho: 998.2, k: 0.5988, cp: 4187, tin: 293.15, tb: 373.12, tc: 647.10, pcrit: 22.064e6, coking: null, source: "rocketprops (REFPROP), 293.15 K" },
+  rp1:      { name: "RP-1", rho: 810.0, k: 0.1362, cp: 1990, tin: 293.15, tb: 489.82, tc: 676.48, pcrit: 2.1718e6, coking: 600, source: "rocketprops, 293.15 K" },
+  ethanol:  { name: "Ethanol", rho: 789.6, k: 0.1664, cp: 2514, tin: 293.15, tb: 351.39, tc: 513.90, pcrit: 6.1480e6, coking: null, source: "rocketprops (REFPROP), 293.15 K" },
+  methanol: { name: "Methanol", rho: 790.9, k: 0.2025, cp: 2506, tin: 293.15, tb: 337.63, tc: 512.60, pcrit: 8.1035e6, coking: null, source: "rocketprops (REFPROP), 293.15 K" },
+  ch4:      { name: "LCH4", rho: 422.4, k: 0.1839, cp: 3483, tin: 111.67, tb: 111.67, tc: 190.56, pcrit: 4.5992e6, coking: null, source: "rocketprops (REFPROP), sat. liquid 111.67 K" },
+  h2:       { name: "LH2", rho: 70.8, k: 0.1035, cp: 9735, tin: 20.27, tb: 20.27, tc: 32.94, pcrit: 1.2858e6, coking: null, source: "rocketprops (REFPROP para-H2), sat. liquid 20.27 K" },
+  propane:  { name: "Propane", rho: 495.56, k: 0.09488, cp: 2687, tin: 298.15, tb: 231.04, tc: 369.89, pcrit: 4.2512e6, coking: null, source: "NIST liquid, 298.15 K / 2 MPa" },
+  gasoline: { name: "Gasoline (n-heptane)", rho: 679.61, k: 0.1222, cp: 2247, tin: 298.15, tb: 371.53, tc: 540.13, pcrit: 2.736e6, coking: null, source: "NIST n-heptane, 298.15 K" },
+  mmh:      { name: "MMH", rho: 879.8, k: 0.2495, cp: 2930, tin: 293.15, tb: 360.82, tc: 585.37, pcrit: 8.2392e6, coking: null, source: "rocketprops, 293.15 K" },
+  udmh:     { name: "UDMH", rho: 790.4, k: 0.1590, cp: 2785, tin: 293.15, tb: 335.47, tc: 523.15, pcrit: 5.9778e6, coking: null, source: "rocketprops, 293.15 K" },
+  lox:      { name: "LOX", rho: 1141.2, k: 0.1509, cp: 1699, tin: 90.19, tb: 90.19, tc: 154.58, pcrit: 5.0430e6, coking: null, source: "rocketprops (REFPROP), sat. liquid 90.19 K" },
+  nto:      { name: "NTO", rho: 1441.4, k: 0.1327, cp: 1569, tin: 293.15, tb: 294.48, tc: 431.37, pcrit: 9.9374e6, coking: null, source: "rocketprops, 293.15 K" },
+  h2o2:     { name: "H2O2 (100%)", rho: 1450.0, k: 0.4402, cp: 2750, tin: 288.15, tb: 423.35, tc: 730.20, pcrit: 21.680e6, coking: null, source: "rocketprops, 288.15 K" },
+  n2o:      { name: "N2O", rho: 803.03, k: 0.082919, cp: 2858, tin: 293.15, tb: 184.68, tc: 309.52, pcrit: 7.2450e6, coking: null, source: "NIST liquid, 293.15 K / 6 MPa" },
+};
+/** (fuel, oxidizer) coolant keys per pair; oxidizer null when gaseous (GOX). */
+const PAIR_COOLANTS: Record<string, [string, string | null]> = {
+  GoxKerosene: ["rp1", null], GoxGasoline: ["gasoline", null], GoxEthanol: ["ethanol", null], GoxMethanol: ["methanol", null],
+  LoxRp1: ["rp1", "lox"], LoxEthanol: ["ethanol", "lox"], LoxMethane: ["ch4", "lox"], NitrousPropane: ["propane", "n2o"],
+  NtoMmh: ["mmh", "nto"], NtoUdmh: ["udmh", "nto"], LoxHydrogen: ["h2", "lox"], H2o2Kerosene: ["rp1", "h2o2"],
+};
+/** Default jacket inlet pressure / Pc (mirrors `cooling::coolants::DEFAULT_JACKET_PRESSURE_FACTOR`). */
+export const DEFAULT_JACKET_PRESSURE_FACTOR = 1.35;
+/** Default channel-wall liner thickness, mm (NASA TP-1834; mirrors `simulate::DEFAULT_LINER_THICKNESS_MM`). */
+export const DEFAULT_LINER_THICKNESS_MM = 0.89;
+/** Injector ΔP / Pc in the feed pressure budget (mirrors `cooling::coolants::INJECTOR_DP_FRACTION`). */
+const INJECTOR_DP_FRACTION = 0.2;
+
+/** Fuel / oxidizer coolant names for a pair (for the Cooling tab's coolant picker). */
+export function pairCoolantNames(pair: string): { fuel: string; oxidizer: string | null } {
+  const [f, o] = PAIR_COOLANTS[pair] ?? PAIR_COOLANTS.GoxKerosene;
+  return { fuel: MOCK_COOLANTS[f].name, oxidizer: o ? MOCK_COOLANTS[o].name : null };
+}
+
+/** The selected coolant and which propellant stream it is (mirrors Rust `coolants::select`). */
+function mockCoolant(): { coolant: MockCoolant; stream: "fuel" | "oxidizer" | "external" } {
+  const [f, o] = PAIR_COOLANTS[liveDesign.propellant.pair] ?? PAIR_COOLANTS.GoxKerosene;
+  const choice = pchoice("cooling.coolant", "fuel").toLowerCase();
+  if (choice === "oxidizer" && o) return { coolant: MOCK_COOLANTS[o], stream: "oxidizer" };
+  const named = Object.values(MOCK_COOLANTS).find((c) => c.name.toLowerCase() === choice);
+  if (!named || named === MOCK_COOLANTS[f]) return { coolant: MOCK_COOLANTS[f], stream: "fuel" };
+  return { coolant: named, stream: o && named === MOCK_COOLANTS[o] ? "oxidizer" : "external" };
+}
+
+/** Two-point Clausius–Clapeyron T_sat (K), null above the critical pressure — mirrors the Rust. */
+function coolantTsat(c: MockCoolant, p: number): number | null {
+  if (p >= c.pcrit) return null;
+  const b = Math.log(c.pcrit / 101325) / (1 / c.tb - 1 / c.tc);
+  return 1 / (1 / c.tb - Math.log(Math.max(p, 1) / 101325) / b);
+}
+
+function mockCoolantReport(
+  c: MockCoolant, p: number, mdot: number,
+  flow: { outlet: number; vIn: number; area: number; dh: number; pOut: number },
+): CoolantReportDto {
+  // The outlet has the lowest pressure, so the lowest T_sat: it governs boiling (as in Rust).
+  const tSat = coolantTsat(c, flow.pOut);
+  let kind: CoolantReportDto["limit_kind"] = "none";
+  let limit: number | null = null;
+  if (tSat !== null && (c.coking === null || tSat <= c.coking)) { kind = "boiling"; limit = tSat; }
+  else if (c.coking !== null) { kind = "coking"; limit = c.coking; }
+  const pb = (p / 1e5).toFixed(1), pcb = (c.pcrit / 1e5).toFixed(1);
+  const note = tSat !== null
+    ? kind === "boiling"
+      ? `${c.name} at ${pb} bar is subcritical (P_crit ${pcb} bar): boiling margin vs T_sat ${tSat.toFixed(0)} K.`
+      : `${c.name} at ${pb} bar is subcritical (P_crit ${pcb} bar, T_sat ${tSat.toFixed(0)} K), but the coking limit ${limit} K is lower and governs (NASA CR-165405).`
+    : kind === "coking"
+      ? `${c.name} at ${pb} bar is supercritical (P_crit ${pcb} bar): no boiling, so the boiling check is replaced by the coolant-side wall coking limit ${limit} K (NASA CR-165405).`
+      : `${c.name} at ${pb} bar is supercritical (P_crit ${pcb} bar): no boiling, and no sourced coking/decomposition limit — only the wall-material limit applies.`;
+  return {
+    name: c.name, source: c.source, inlet_temp_k: c.tin, inlet_pressure_pa: p, outlet_pressure_pa: flow.pOut, critical_pressure_pa: c.pcrit,
+    supercritical: tSat === null, saturation_temp_k: tSat, coking_limit_k: c.coking, limit_kind: kind, limit_k: limit,
+    mass_flow_kg_s: mdot, outlet_temp_k: flow.outlet, inlet_velocity_m_s: flow.vIn,
+    // The mock keeps inlet properties, so the velocity does not change along the circuit.
+    max_velocity_m_s: flow.vIn, flow_area_m2: flow.area, hydraulic_diameter_m: flow.dh,
+    correlation: c.name === "LH2" ? "Taylor (NASA TN D-4332), (T_w/T_b)^-0.57" : "Gnielinski × (μ_b/μ_w)^0.11 (Petukhov)",
+    property_basis: "browser mock: inlet properties", note,
+  };
+}
+
 function mockCooling(material: string, method: string): CoolingStudyDto {
   const m = mockMaterial(material);
   const extMat = MOCK_MATERIALS.find((x) => x.name === liveDesign.materials?.nozzle);
@@ -1588,30 +1762,56 @@ function mockCooling(material: string, method: string): CoolingStudyDto {
   // Peak (throat) heat flux scales like Bartz q ∝ Pc^0.8; ~30 MW/m² at 20 bar.
   const qThroat = 272 * Math.pow(pc, 0.8);
   // Coolant conditions (user params, mirror the Rust L3 inputs).
-  const pairNow = liveDesign.propellant.pair;
-  const velDef = (liveDesign.choices?.["cooling.coolant"] ?? "fuel") === "water" ? 6 : pairNow === "LoxHydrogen" ? 100 : pairNow === "LoxMethane" ? 30 : 20;
-  const coolantVel = pval("cooling.coolant_velocity_m_s", velDef);
-  const coolantPBar = pval("cooling.coolant_pressure_bar", (1.5 * pc) / 1e5);
-  const linerMm = Math.min(20, Math.max(0.1, pval("cooling.liner_thickness_mm", 1.0)));
+  const coolantVel = pval("cooling.coolant_velocity_m_s", 6);
+  // Jacket inlet pressure: explicit override, else scaled with Pc (as in Rust l3_input).
+  const coolantP = liveDesign.params?.["cooling.coolant_pressure_bar"] !== undefined
+    ? Math.max(0.5, pval("cooling.coolant_pressure_bar", 0)) * 1e5
+    : Math.max(1, pval("cooling.coolant_pressure_factor", DEFAULT_JACKET_PRESSURE_FACTOR)) * pc;
+  const { coolant, stream } = mockCoolant();
+  // A propellant coolant carries the propellant flow (× cooling.coolant_flow_fraction);
+  // an external coolant (test-stand water) has its flow set by the velocity.
+  const fraction = Math.min(1, Math.max(0.05, pval("cooling.coolant_flow_fraction", 1)));
+  const propFlow = stream === "fuel" ? l0?.fuel_flow : stream === "oxidizer" ? l0?.oxidizer_flow : undefined;
+  const fixedFlow = propFlow !== undefined ? fraction * propFlow : null;
   // Discrete cooling channels (smaller hydraulic diameter → better coolant-side h
-  // → cooler wall) vs the annular-gap fallback.
+  // → cooler wall) vs an annulus at the throat — sized for the design velocity
+  // when the flow is fixed, else the L0 gap.
   const chCount = pval("cooling.channel_count", 0);
   let chFactor = 1;
+  let flowArea: number;
+  let dh: number;
   if (chCount > 0) {
     const w = Math.max(0.1, pval("cooling.channel_width_mm", 1.5)) / 1000;
     const h = Math.max(0.1, pval("cooling.channel_height_mm", 3.0)) / 1000;
-    const dh = (2 * w * h) / (w + h);
+    dh = (2 * w * h) / (w + h);
     chFactor = Math.pow(dh / 0.004, 0.15); // < 1 for tight channels
+    flowArea = chCount * w * h;
+  } else {
+    const circ = Math.PI * 2 * throatR;
+    const gap = fixedFlow !== null ? fixedFlow / (coolant.rho * Math.max(coolantVel, 0.1) * circ) : (l0?.cooling_gap ?? 0.001);
+    dh = 2 * gap;
+    flowArea = circ * gap;
   }
+  const mdot = Math.max(1e-4, fixedFlow ?? coolant.rho * coolantVel * flowArea);
+  const vIn = mdot / (coolant.rho * flowArea);
   // Peak wall temperature: lower conductivity → hotter, hotter at higher Pc, and
-  // cooler as coolant velocity rises or channels tighten (higher coolant-side h).
-  // The liner term is the conduction drop q·t/k relative to the 1 mm baseline.
-  const wall = (620 + 9000 / m.thermal_conductivity_w_m_k) * Math.pow(pc / 2e6, 0.15) * Math.pow(6 / Math.max(coolantVel, 0.5), 0.2) * chFactor
-    + Math.max(-200, (qThroat * (linerMm - 1) * 1e-3) / m.thermal_conductivity_w_m_k);
-  // Boiling margin grows with the water saturation temperature at the coolant
-  // pressure (Antoine, as in the Rust L3) and with velocity (cooler wall-side coolant).
-  const tSat = (bar: number) => (bar <= 1.01325 ? 373.15 : 1730.63 / (8.07131 - Math.log10(bar * 1e5 * 0.00750062)) - 233.426 + 273.15);
-  const boilMargin = 40 + (tSat(coolantPBar) - tSat(3)) + 6 * (coolantVel - 6);
+  // cooler as coolant velocity rises, channels tighten or the coolant conducts
+  // better (water k≈0.6 vs RP-1 k≈0.14 → higher coolant-side h).
+  // Hot-gas wall: a thin liner with discrete channels (NASA TP-1834's 0.89 mm by
+  // default), else L0's hoop-stress chamber wall — scales the conduction term.
+  const l0Wall = l0?.wall_thickness ?? 0.002;
+  const hotWall = chCount > 0 ? Math.max(0.1, pval("cooling.liner_thickness_mm", DEFAULT_LINER_THICKNESS_MM)) / 1000 : l0Wall;
+  const wallClean = (620 + (9000 / m.thermal_conductivity_w_m_k) * (hotWall / l0Wall)) * Math.pow(pc / 2e6, 0.15) * Math.pow(6 / Math.max(vIn, 0.5), 0.2) * chFactor * Math.pow(0.6 / coolant.k, 0.1);
+  // Hot-wall carbon deposit (cooling.deposit_resistance_cm2k_w, default 0 = clean):
+  // a series resistance R_d. With h_g ≈ q/(Tc − T_w), the flux falls by
+  // 1/(1 + h_g·R_d) and the metal under the deposit cools by the same share of
+  // its rise above the coolant (mirrors the Rust L3 series sum).
+  const rDep = Math.max(0, pval("cooling.deposit_resistance_cm2k_w", 0)) * 1e-4;
+  const depFactor = (q: number, tWall: number) => 1 / (1 + (rDep * q) / Math.max(100, chamberTc() - tWall));
+  const wall = coolant.tin + (wallClean - coolant.tin) * depFactor(qThroat, wallClean);
+  // Coolant-side wall temperature (low-fidelity): partway from the coolant inlet
+  // toward the hot wall; margins are measured to the governing coolant limit.
+  const coolWall = coolant.tin + 0.5 * Math.max(0, wall - coolant.tin);
 
   // Build stations from the real geometry: chamber barrel at r=chamberR, then the
   // converging/throat/diverging contour from L2 (fallback: throat→exit taper).
@@ -1625,15 +1825,29 @@ function mockCooling(material: string, method: string): CoolingStudyDto {
   const stations: St[] = raw.map((p) => {
     const rr = Math.max(p.r, throatR);
     // Flux falls off away from the throat as (A_t/A)^0.9 = (r_t/r)^1.8.
-    const q = qThroat * Math.pow(throatR / rr, 1.8);
-    return { x: p.x, r: p.r, heat_flux_w_m2: q, wall_temp_k: 400 + (wall - 400) * Math.min(1, q / qThroat) };
+    const q0 = qThroat * Math.pow(throatR / rr, 1.8);
+    const wall0 = 400 + (wallClean - 400) * Math.min(1, q0 / qThroat);
+    const f = depFactor(q0, wall0);
+    return { x: p.x, r: p.r, heat_flux_w_m2: q0 * f, wall_temp_k: coolant.tin + (wall0 - coolant.tin) * f };
   });
-  const coolantDp = 30000 * (pc / 2e6);
+  // Coolant outlet temperature from the absorbed heat over chamber + nozzle,
+  // Q = Σ q·2πr·dx (inlet cp) — the stations the Rust L3 march covers.
+  const sorted = [...stations].sort((a, b) => a.x - b.x);
+  let heat = 0;
+  for (let i = 1; i < sorted.length; i++)
+    heat += 0.5 * (sorted[i].heat_flux_w_m2 + sorted[i - 1].heat_flux_w_m2) * 2 * Math.PI * 0.5 * (sorted[i].r + sorted[i - 1].r) * (sorted[i].x - sorted[i - 1].x);
+  const outlet = coolant.tin + heat / (mdot * coolant.cp);
+  // Friction drop ∝ v^1.75 (Blasius); ~30 kPa at 6 m/s and 20 bar.
+  const coolantDp = 30000 * (pc / 2e6) * Math.pow(vIn / 6, 1.75);
+  const pOut = Math.max(101325, coolantP - coolantDp);
+  const report = mockCoolantReport(coolant, coolantP, mdot, { outlet, vIn, area: flowArea, dh, pOut });
+  const boilMargin = report.saturation_temp_k !== null ? report.saturation_temp_k - coolWall : null;
+  const coolantMargin = report.limit_k !== null ? report.limit_k - coolWall : null;
   return {
     materials: [...MOCK_MATERIALS, mockMaterial("Custom")],
     selected_material: m.name,
     method,
-    regen: { max_wall_temp_k: wall, wall_material_limit_k: m.max_service_temp_k, min_boiling_margin_k: boilMargin, coolant_dp_pa: coolantDp, stations },
+    regen: { max_wall_temp_k: wall, wall_material_limit_k: m.max_service_temp_k, min_boiling_margin_k: boilMargin, min_coolant_margin_k: coolantMargin, coolant_dp_pa: coolantDp, wall_thickness_m: hotWall, coolant: report, stations },
     film: method === "film" ? mockFilm() : null,
     radiation: method === "radiation" ? mockRadiation(m.max_service_temp_k) : null,
     ablative: method === "ablative" ? mockAblative() : null,

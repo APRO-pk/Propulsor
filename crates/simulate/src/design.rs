@@ -474,7 +474,8 @@ pub struct MaterialTradeRow {
 pub struct InjectorTradeRow {
     pub element_count: u32,
     pub injection_velocity_m_s: f64,
-    pub smd_um: f64,
+    /// Mass-median drop diameter of the atomizing (liquid) side, µm.
+    pub mmd_um: f64,
     pub momentum_ratio: f64,
     pub stable: bool,
 }
@@ -575,27 +576,26 @@ pub fn trade_bundle(design: &mut EngineDesign) -> Result<TradeBundle, EngineErro
     }
 
     // Injector trade: sweep the element count.
-    let density = propellants::props_for(pair).and_then(|p| p.density_kg_m3).unwrap_or(1000.0);
     let gas_density = pc / ((8314.462 / l1.mean_molecular_weight) * l1.tc_k);
+    let ((ox_liq, ox_phase), (fu_liq, fu_phase)) = injector::liquids::for_pair(pair);
     let mut injector_trade = Vec::new();
     for &n in &[8u32, 16, 24, 32, 48, 64] {
         let r = injector::flow::solve_injector_flow(&injector::flow::InjectorFlowInput {
-            ox_flow_kg_s: l0.oxidizer_flow.as_si(),
-            fuel_flow_kg_s: l0.fuel_flow.as_si(),
-            ox_density_kg_m3: density,
-            fuel_density_kg_m3: density * 0.72,
+            ox: injector::flow::SideInput { flow_kg_s: l0.oxidizer_flow.as_si(), liquid: ox_liq, phase: ox_phase },
+            fuel: injector::flow::SideInput { flow_kg_s: l0.fuel_flow.as_si(), liquid: fu_liq, phase: fu_phase },
             chamber_pressure_pa: pc,
             dp_fraction: 0.2,
             element_count: n,
             discharge_coefficient: 0.7,
-            surface_tension_n_m: 0.02,
             gas_density_kg_m3: gas_density,
-            element_type: element_type(design),
+            element_type: injector::flow::ElementType::UnlikeDoublet,
         });
+        // Report the liquid side that atomizes (fuel unless it is injected as gas).
+        let mmd = if fu_phase == injector::liquids::Phase::Liquid { r.fuel.mass_median_diameter_m } else { r.ox.mass_median_diameter_m };
         injector_trade.push(InjectorTradeRow {
             element_count: n,
-            injection_velocity_m_s: r.ox.injection_velocity_m_s,
-            smd_um: r.ox.sauter_mean_diameter_m * 1e6,
+            injection_velocity_m_s: r.fuel.injection_velocity_m_s,
+            mmd_um: mmd * 1e6,
             momentum_ratio: r.momentum_ratio,
             stable: r.flags.is_empty(),
         });
@@ -781,26 +781,43 @@ pub fn collect_issues(design: &mut EngineDesign) -> Result<IssuesReport, EngineE
                 c.regen.wall_material_limit_k - c.regen.max_wall_temp_k
             ));
         }
-        if actively_cooled && c.regen.min_boiling_margin_k < 0.0 {
-            use cooling::coolant::CoolantLimitKind as K;
-            let what = match c.regen.coolant_limit_kind {
-                K::Boiling => "boils",
-                K::Coking => "cokes (coolant-side wall above the coking limit)",
-                K::Decomposition => "decomposes (coolant-side wall above its limit)",
-                K::None => "exceeds its limit",
+        let coolant = &c.regen.coolant;
+        if let Some(m) = c.regen.min_coolant_margin_k.filter(|m| actively_cooled && *m < 0.0) {
+            let what = if coolant.limit_kind == "coking" {
+                format!("{} cokes — coolant-side wall exceeds the {:.0} K coking limit", coolant.name, coolant.limit_k.unwrap_or(0.0))
+            } else {
+                format!("{} boils — coolant-side wall exceeds T_sat {:.0} K", coolant.name, coolant.limit_k.unwrap_or(0.0))
             };
-            add("fail", "Cooling", format!(
-                "{} coolant {what} — margin {:.0} K", c.regen.coolant_name, c.regen.min_boiling_margin_k
-            ));
+            add("fail", "Cooling", format!("{what} (margin {m:.0} K at {:.1} bar)", coolant.inlet_pressure_pa / 1e5));
         }
-        // A fuel-cooled annular jacket sized for a tiny fuel flow ends up with a gap
-        // too fine to make; such engines are usually water-, film-, radiation- or
-        // ablatively cooled, or use discrete channels.
-        if method == "regen" && design.param("cooling.channel_count", 0.0) <= 0.0 && c.regen.coolant_gap_m < 0.3e-3 {
-            add("warn", "Cooling", format!(
-                "Regen gap {:.2} mm is below ~0.3 mm (hard to manufacture) — consider channels, a lower coolant velocity, or another cooling method",
-                c.regen.coolant_gap_m * 1e3
-            ));
+        // A propellant coolant flows on to the injector, so the jacket drop must fit
+        // in the pressure budget: jacket inlet − Pc − injector drop (0.2·Pc).
+        if method == "regen" && coolant.name != cooling::coolants::WATER.name {
+            let pc = design.operating_point.chamber_pressure.as_si();
+            let allowed = coolant.inlet_pressure_pa - pc * (1.0 + cooling::coolants::INJECTOR_DP_FRACTION);
+            if c.regen.coolant_dp_pa > allowed {
+                add("warn", "Cooling", format!(
+                    "Jacket ΔP {:.1} bar exceeds the {:.1} bar left in the pressure budget (jacket inlet {:.1} bar − Pc − 20 % injector drop) — raise the jacket pressure or enlarge the passages",
+                    c.regen.coolant_dp_pa / 1e5,
+                    allowed.max(0.0) / 1e5,
+                    coolant.inlet_pressure_pa / 1e5
+                ));
+            }
+        }
+        // Channel-wall liner: the coolant-minus-gas pressure bends the thin hot-gas
+        // wall across each channel, a beam fixed at both lands: σ = Δp·w²/(2·t²).
+        if method == "regen" && design.param("cooling.channel_count", 0.0) > 0.0 {
+            let w = design.param("cooling.channel_width_mm", 1.5).max(0.1) * 1e-3;
+            let t = c.regen.wall_thickness_m.max(1e-5);
+            let dp = c.regen.stations.iter().map(|s| s.coolant_pressure_pa - s.gas_pressure_pa).fold(0.0, f64::max);
+            let sigma = dp * w * w / (2.0 * t * t);
+            let allowable = resolve_material(design, &material).allowable_stress_pa;
+            if sigma > allowable {
+                add("warn", "Cooling", format!(
+                    "Liner bending stress {:.0} MPa ({:.1} bar across {:.1} mm channels, {:.2} mm liner) exceeds the {material} allowable {:.0} MPa — thicken the liner or narrow the channels",
+                    sigma / 1e6, dp / 1e5, w * 1e3, t * 1e3, allowable / 1e6
+                ));
+            }
         }
         if method == "regen" {
             if let Some(mat) = cooling::materials::by_name(&material) {
@@ -840,6 +857,9 @@ pub fn collect_issues(design: &mut EngineDesign) -> Result<IssuesReport, EngineE
         }
         for f in &a.injector.flags {
             add("warn", "Injector", f.clone());
+        }
+        for f in &a.ere.flags {
+            add("warn", "Combustion", f.clone());
         }
     }
 
@@ -914,14 +934,6 @@ pub fn reactant_temps(design: &EngineDesign) -> (f64, f64) {
     )
 }
 
-/// Hot-wall liner thickness for the regen conduction path, m. This is the thin
-/// inner liner the heat crosses (typically 0.6–1.5 mm), not the L0 structural
-/// shell thickness — using the shell over-predicts the conduction drop by an order
-/// of magnitude.
-pub fn liner_thickness_m(design: &EngineDesign) -> f64 {
-    design.param("cooling.liner_thickness_mm", 1.0).clamp(0.1, 20.0) * 1e-3
-}
-
 /// The design's cooling method (`"regen" | "film" | "radiation" | "ablative"`).
 pub fn cooling_method(design: &EngineDesign) -> String {
     design
@@ -940,64 +952,16 @@ pub fn actively_cooled(design: &EngineDesign) -> bool {
     matches!(cooling_method(design).as_str(), "regen" | "film")
 }
 
-/// Default injector element for a propellant pair, following practice: unlike
-/// doublets only where the O/F and densities let the momentum ratio sit near 1
-/// (hypergols, alcohols); like-doublets for liquid-liquid hydrocarbons and nitrous
-/// (F-1, H-1); coaxial for gaseous oxygen and the cryogenic fuels (RL10, SSME).
-pub fn default_element_type(pair: engine_core::PropellantPair) -> &'static str {
-    use engine_core::PropellantPair as P;
-    match pair {
-        P::NtoMmh | P::NtoUdmh | P::LoxEthanol => "UnlikeDoublet",
-        P::LoxRp1 | P::H2o2Kerosene | P::NitrousPropane => "LikeDoublet",
-        P::LoxMethane | P::LoxHydrogen | P::GoxKerosene | P::GoxGasoline | P::GoxEthanol | P::GoxMethanol => "Coaxial",
-        P::Unset => "UnlikeDoublet",
-    }
-}
-
-/// Default injector element count: about one element per kN of thrust (RL10:
-/// 216 elements at ~110 kN), clamped to 6–600, so orifices and droplet sizes stay
-/// realistic as the engine scales.
-pub fn default_element_count(design: &EngineDesign) -> f64 {
-    (design.operating_point.thrust.as_si() / 1000.0).round().clamp(6.0, 600.0)
-}
-
-/// The design's injector element type (user choice, else the propellant default).
-pub fn element_type(design: &EngineDesign) -> injector::flow::ElementType {
-    match design.choice("injector.element_type", default_element_type(design.propellant.pair)).as_str() {
-        s if s.contains("Like") && !s.contains("Unlike") => injector::flow::ElementType::LikeDoublet,
-        s if s.contains("Coax") => injector::flow::ElementType::Coaxial,
-        _ => injector::flow::ElementType::UnlikeDoublet,
-    }
-}
-
 /// Bearing bore, mm: the user's value, else the shaft diameter rounded up to the
 /// next standard 5 mm bore.
 pub fn bearing_bore_mm(design: &EngineDesign, shaft_diameter_m: f64) -> f64 {
     design.param("turbo.bearing_bore_mm", ((shaft_diameter_m * 1000.0 / 5.0).ceil() * 5.0).max(5.0))
 }
 
-/// Regen coolant: the engine's fuel by default (`cooling.coolant = "fuel"`), or
-/// water for a water-jacketed test-stand engine. `cooling.coolant_limit_k`
-/// overrides the coolant-side coking/decomposition limit.
-pub fn coolant(design: &EngineDesign) -> cooling::coolant::Coolant {
-    let mut c = match design.choice("cooling.coolant", "fuel").as_str() {
-        "water" => cooling::coolant::Coolant::water(),
-        _ => cooling::coolant::Coolant::for_fuel(design.propellant.pair),
-    };
-    if let Some(&t) = design.params.get("cooling.coolant_limit_k") {
-        c.supercritical_limit_k = Some(t.max(1.0));
-        if c.supercritical_limit_kind == cooling::coolant::CoolantLimitKind::None {
-            c.supercritical_limit_kind = cooling::coolant::CoolantLimitKind::Decomposition;
-        }
-    }
-    c
-}
-
-/// Coolant inlet pressure, Pa. Defaults to 1.5× chamber pressure: the coolant must
-/// enter above Pc to cover the jacket and injector drops on its way to the chamber.
-pub fn coolant_pressure_pa(design: &EngineDesign) -> f64 {
-    let default_bar = 1.5 * design.operating_point.chamber_pressure.as_si() / 1e5;
-    design.param("cooling.coolant_pressure_bar", default_bar).max(0.5) * 1e5
+/// Largest through-wall (hot-wall − coolant-side-wall) temperature drop in an L3
+/// solve, K: the gradient that drives the liner's thermal stress.
+pub fn max_wall_dt_k(l3: &cooling::CoolingResult) -> f64 {
+    l3.stations.iter().map(|s| (s.wall_temp_k - s.coolant_wall_temp_k).max(0.0)).fold(0.0, f64::max)
 }
 
 /// Resolve a wall-material name to a [`cooling::materials::Material`]. The name
@@ -1257,9 +1221,29 @@ pub struct AnalysisStudy {
     pub stress: structures::distribution::StressField,
     /// Distributed-stress field as CSV (FEM boundary data).
     pub stress_csv: String,
-    /// Computed combustion (c*) efficiency from L*/residence-time/mixing (ERE).
+    /// Computed combustion (c*) efficiency: Priem-Heidmann vaporization x mixing.
     pub ere: injector::efficiency::EreResult,
+    /// The defaults the injector inputs fall back to for this design (they
+    /// depend on the propellants, size and element type), so the UI can show them.
+    pub injector_defaults: InjectorDefaults,
 }
+
+/// Design-dependent defaults of the `injector.*` inputs.
+#[derive(Debug, Clone, Serialize)]
+pub struct InjectorDefaults {
+    pub element_count: u32,
+    pub mixing_efficiency: f64,
+    pub ox_liquid: injector::liquids::Liquid,
+    pub fuel_liquid: injector::liquids::Liquid,
+    pub ox_phase: injector::liquids::Phase,
+    pub fuel_phase: injector::liquids::Phase,
+}
+
+/// Default orifice diameter of the atomizing (liquid) side, m: the 1.40 mm
+/// fuel holes of Pavli's best LOX/RP-1 triplet (NASA TM-79319 Table I, No.
+/// 250-2). The default element count is sized to it, so the spray stays as
+/// fine as that validated injector whatever the engine size.
+pub const DEFAULT_ORIFICE_DIAMETER_M: f64 = 1.40e-3;
 
 /// Run the section-D analyses for the current design.
 pub fn analysis_study(design: &mut EngineDesign) -> Result<AnalysisStudy, EngineError> {
@@ -1269,34 +1253,68 @@ pub fn analysis_study(design: &mut EngineDesign) -> Result<AnalysisStudy, Engine
     let l3: cooling::CoolingResult = payload(design, Tier::L3)?;
 
     let pc = design.operating_point.chamber_pressure.as_si();
-    let density = propellants::props_for(design.propellant.pair)
-        .and_then(|p| p.density_kg_m3)
-        .unwrap_or(1000.0);
+    let pair = design.propellant.pair;
     let r_spec = 8314.462 / l1.mean_molecular_weight;
     let gas_density = pc / (r_spec * l1.tc_k);
     let sound_speed = (l1.gamma * r_spec * l1.tc_k).sqrt();
 
     // --- User design inputs (persisted injector.* params; best-practice defaults) ---
     let dp_fraction = design.param("injector.dp_fraction", 0.2).clamp(0.03, 0.6);
-    let element_count = design.param("injector.element_count", default_element_count(design)).round().clamp(1.0, 2000.0) as u32;
     let discharge_coefficient = design.param("injector.discharge_coefficient", 0.7).clamp(0.4, 1.0);
-    let surface_tension = design.param("injector.surface_tension_n_m", 0.02).clamp(0.001, 0.1);
-    let fuel_density_factor = design.param("injector.fuel_density_factor", 0.72).clamp(0.2, 2.0);
     let time_lag_s = design.param("injector.time_lag_ms", 1.5) * 1e-3;
     let interaction_index = design.param("injector.interaction_index", 0.5).clamp(0.0, 1.0);
-    let element_type = element_type(design);
+    let element_type = match design.choice("injector.element_type", "Triplet") {
+        s if s.contains("Like") && !s.contains("Unlike") => injector::flow::ElementType::LikeDoublet,
+        s if s.contains("Triplet") => injector::flow::ElementType::Triplet,
+        s if s.contains("Coax") => injector::flow::ElementType::Coaxial,
+        s if s.contains("Pintle") => injector::flow::ElementType::Pintle,
+        _ => injector::flow::ElementType::UnlikeDoublet,
+    };
+    // Per-propellant liquid properties (sourced table) with user overrides.
+    let ((mut ox_liq, ox_phase), (mut fu_liq, fu_phase)) = injector::liquids::for_pair(pair);
+    // Default element count: one orifice of DEFAULT_ORIFICE_DIAMETER_M per element
+    // on the atomizing side (fuel, or the oxidizer if the fuel is injected as gas).
+    let default_elements = {
+        let (flow, liq) = if fu_phase == injector::liquids::Phase::Liquid {
+            (l0.fuel_flow.as_si(), fu_liq)
+        } else {
+            (l0.oxidizer_flow.as_si(), ox_liq)
+        };
+        let v = discharge_coefficient * (2.0 * dp_fraction * pc / liq.density_kg_m3).sqrt();
+        let area = std::f64::consts::PI / 4.0 * DEFAULT_ORIFICE_DIAMETER_M.powi(2);
+        (flow / (liq.density_kg_m3 * v * area)).ceil().clamp(1.0, 2000.0)
+    };
+    let element_count = design.param("injector.element_count", default_elements).round().clamp(1.0, 2000.0) as u32;
+    let injector_defaults = InjectorDefaults {
+        element_count: default_elements as u32,
+        mixing_efficiency: injector::efficiency::default_mixing_efficiency(element_type),
+        ox_liquid: ox_liq,
+        fuel_liquid: fu_liq,
+        ox_phase,
+        fuel_phase: fu_phase,
+    };
+    let phase = |key: &str, default: injector::liquids::Phase| match design.choice(key, "Auto") {
+        s if s.eq_ignore_ascii_case("Gas") => injector::liquids::Phase::Gas,
+        s if s.eq_ignore_ascii_case("Liquid") => injector::liquids::Phase::Liquid,
+        _ => default,
+    };
+    let (ox_phase, fu_phase) = (phase("injector.ox_phase", ox_phase), phase("injector.fuel_phase", fu_phase));
+    for (liq, side) in [(&mut ox_liq, "ox"), (&mut fu_liq, "fuel")] {
+        liq.surface_tension_n_m = design.param(&format!("injector.{side}_surface_tension_n_m"), liq.surface_tension_n_m).clamp(1e-4, 0.2);
+        liq.viscosity_pa_s = design.param(&format!("injector.{side}_viscosity_mpa_s"), liq.viscosity_pa_s * 1e3).clamp(1e-3, 100.0) * 1e-3;
+    }
+    let mixing_efficiency = design
+        .param("injector.mixing_efficiency", injector::efficiency::default_mixing_efficiency(element_type))
+        .clamp(0.5, 1.0);
 
     // Injector fluid-flow simulation.
     let injector = injector::flow::solve_injector_flow(&injector::flow::InjectorFlowInput {
-        ox_flow_kg_s: l0.oxidizer_flow.as_si(),
-        fuel_flow_kg_s: l0.fuel_flow.as_si(),
-        ox_density_kg_m3: density,
-        fuel_density_kg_m3: density * fuel_density_factor,
+        ox: injector::flow::SideInput { flow_kg_s: l0.oxidizer_flow.as_si(), liquid: ox_liq, phase: ox_phase },
+        fuel: injector::flow::SideInput { flow_kg_s: l0.fuel_flow.as_si(), liquid: fu_liq, phase: fu_phase },
         chamber_pressure_pa: pc,
         dp_fraction,
         element_count,
         discharge_coefficient,
-        surface_tension_n_m: surface_tension,
         gas_density_kg_m3: gas_density,
         element_type,
     });
@@ -1317,6 +1335,8 @@ pub fn analysis_study(design: &mut EngineDesign) -> Result<AnalysisStudy, Engine
     let mut stations: Vec<structures::distribution::StressStationInput> = Vec::new();
     // Every L3 wall station (chamber, convergent, nozzle): gas pressure from the
     // local area ratio — subsonic upstream of the throat (x < 0), supersonic after.
+    // The thermal (secondary) stress uses the through-wall drop to the coolant-side
+    // wall, and only for actively cooled walls.
     let active = actively_cooled(design);
     for s in &l3.stations {
         let ar = (s.r / throat_r).powi(2).max(1.0);
@@ -1332,7 +1352,7 @@ pub fn analysis_study(design: &mut EngineDesign) -> Result<AnalysisStudy, Engine
             wall_thickness_m: l0.wall_thickness.as_si(),
             gas_pressure_pa: p,
             wall_temp_hot_k: s.wall_temp_k,
-            wall_temp_cold_k: if active { s.wall_temp_cold_k } else { s.wall_temp_k },
+            wall_temp_cold_k: if active { s.coolant_wall_temp_k } else { s.wall_temp_k },
         });
     }
     let stress = structures::distribution::solve_stress_field(&stations, &structures::distribution::StressMaterial {
@@ -1343,23 +1363,48 @@ pub fn analysis_study(design: &mut EngineDesign) -> Result<AnalysisStudy, Engine
     });
     let stress_csv = stress.to_csv();
 
-    // Computed combustion efficiency (ERE): residence time from L*, droplet
-    // vaporization from the injector SMD, and inter-element mixing.
-    let smd = 0.5 * (injector.ox.sauter_mean_diameter_m + injector.fuel.sauter_mean_diameter_m);
-    let l_star = l0.chamber_volume.as_si() / l0.throat_area.as_si().max(1e-9);
-    let ere = injector::efficiency::energy_release_efficiency(&injector::efficiency::EreInput {
-        l_star_m: l_star,
-        throat_area_m2: l0.throat_area.as_si(),
-        mass_flow_kg_s: l0.total_flow.as_si(),
-        chamber_gas_density_kg_m3: gas_density,
-        chamber_temp_k: l1.tc_k,
-        sauter_mean_diameter_m: smd,
-        element_count,
-        dp_fraction,
-        chamber_pressure_pa: pc,
-    });
+    // Computed combustion efficiency (ERE): Priem-Heidmann vaporization of each
+    // propellant's spray in this chamber, times the mixing efficiency. The L0
+    // chamber length is the cylinder-equivalent of the whole chamber volume
+    // (convergent volume lumped in), which slightly under-credits vaporization:
+    // a conservative reading of CR-168066 Eq. 1.
+    let contraction_ratio = (l0.chamber_diameter.as_si() / l0.throat_diameter.as_si().max(1e-9)).powi(2);
+    let mixture_ratio = l0.oxidizer_flow.as_si() / l0.fuel_flow.as_si().max(1e-9);
+    let (fuel_temp_k, ox_temp_k) = reactant_temps(design);
+    let c_star_at = |of: f64| {
+        thermo::solve(&thermo::ThermoInput {
+            of_ratio: of,
+            chamber_pressure_pa: pc,
+            propellant_pair: pair,
+            method: thermo::ThermoMethod::GibbsFreeEnergy,
+            fuel_temp_k,
+            ox_temp_k,
+        })
+        .ok()
+        .map(|r| r.c_star_m_s)
+    };
+    let vap_side = |liquid, phase, side: &injector::flow::SideFlow| injector::efficiency::VaporizationSide {
+        liquid,
+        phase,
+        drop_radius_um: side.mass_median_diameter_m * 0.5e6,
+        injection_velocity_m_s: side.injection_velocity_m_s,
+    };
+    let ere = injector::efficiency::energy_release_efficiency(
+        &injector::efficiency::EreInput {
+            chamber_pressure_pa: pc,
+            contraction_ratio,
+            cylinder_length_m: l0.chamber_length.as_si(),
+            convergent_length_m: 0.0,
+            mixture_ratio,
+            ox: vap_side(ox_liq, ox_phase, &injector.ox),
+            fuel: vap_side(fu_liq, fu_phase, &injector.fuel),
+            mixing_efficiency,
+            not_applicable: injector::liquids::vaporization_model_applies(pair).err().map(String::from),
+        },
+        c_star_at,
+    );
 
-    Ok(AnalysisStudy { injector, instability, stress, stress_csv, ere })
+    Ok(AnalysisStudy { injector, instability, stress, stress_csv, ere, injector_defaults })
 }
 
 /// Turbomachinery study (section B): pump, turbine, inducer, shaft, bearing and
@@ -1537,8 +1582,6 @@ pub fn validation_study(design: &mut EngineDesign) -> Result<SensorValidation, E
     let thrust = design.operating_point.thrust.as_si();
     let gamma = l1.gamma;
     let throat_r = l3.stations.iter().map(|s| s.r).fold(f64::INFINITY, f64::min).max(1e-4);
-    // Nozzle taps/thermocouples index the throat → exit stations only.
-    let nozzle: Vec<&cooling::CoolingStation> = l3.stations.iter().filter(|s| s.x >= 0.0).collect();
 
     // Smooth deterministic bias (no RNG): a model that runs slightly hot at the
     // throat and slightly under-predicts pressure downstream, plus a small ripple.
@@ -1566,10 +1609,11 @@ pub fn validation_study(design: &mut EngineDesign) -> Result<SensorValidation, E
             predicted, measured, unit: "Pa".into(), residual_pct: residual,
         });
     }
-    // Nozzle pressure taps from the local area ratio.
+    // Nozzle pressure taps from the local area ratio (L3 stations from the throat on).
+    let nozzle: Vec<&cooling::CoolingStation> = l3.stations.iter().filter(|s| s.x >= 0.0).collect();
     for (frac, label) in [(0.0, "P3 throat"), (0.35, "P4 nozzle"), (0.9, "P5 exit")] {
         let idx = ((nozzle.len() as f64 - 1.0) * frac).round() as usize;
-        if let Some(s) = nozzle.get(idx).copied() {
+        if let Some(s) = nozzle.get(idx) {
             let ar = (s.r / throat_r).powi(2).max(1.0);
             let m = gasdynamics::quasi1d::mach_from_area(ar, gamma);
             let predicted = pc * gasdynamics::quasi1d::pressure_ratio(m, gamma);
@@ -1586,7 +1630,7 @@ pub fn validation_study(design: &mut EngineDesign) -> Result<SensorValidation, E
     // Wall thermocouples along the nozzle.
     for (i, frac) in [0.0, 0.2, 0.5, 0.8].iter().enumerate() {
         let idx = ((nozzle.len() as f64 - 1.0) * frac).round() as usize;
-        if let Some(s) = nozzle.get(idx).copied() {
+        if let Some(s) = nozzle.get(idx) {
             let predicted = s.wall_temp_k;
             let measured = predicted * bias(s.x, 2.0 + i as f64);
             let residual = (measured - predicted) / predicted.max(1.0) * 100.0;

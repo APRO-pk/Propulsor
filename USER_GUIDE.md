@@ -136,7 +136,7 @@ Guided wizard (§3). **Takes:** all core requirements + wizard choices. **Gives:
 
 ### Analysis
 **Takes:** **injector design inputs** (element type, count, ΔP fraction, discharge coefficient, surface tension, fuel/ox density ratio, combustion time lag τ, interaction index n).
-**Gives:** injector fluid-flow (injection velocity, orifice Ø, Weber number, Sauter mean droplet diameter), **combustion instability** (acoustic modes, dominant mode/regime, n–τ stability margin), **distributed wall stress** (FEM-like), and the **computed combustion (c\*) efficiency — ERE** (residence + atomization + mixing) with an **"Apply to design"** button that feeds it back into Isp.
+**Gives:** injector fluid-flow (injection velocity, orifice Ø, Weber number, mass-median droplet diameter), **combustion instability** (acoustic modes, dominant mode/regime, n–τ stability margin), **distributed wall stress** (FEM-like), and the **computed combustion (c\*) efficiency — ERE** (Priem–Heidmann propellant vaporization × mixing; not computed for hypergols) with an **"Apply to design"** button that feeds it back into Isp.
 
 ### Validation
 **Takes:** **imported telemetry CSV** — sensor data (`id,measured`) and/or a startup transient (`t_s,measured_thrust_n,measured_pc_pa`). Template downloads provided; **Clear imported data** reverts.

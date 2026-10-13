@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
-import { coolingStudy, type CoolingStudyDto, type PrintPlanDto } from "./api";
+import { coolingStudy, pairCoolantNames, DEFAULT_JACKET_PRESSURE_FACTOR, DEFAULT_LINER_THICKNESS_MM, type CoolingStudyDto, type PrintPlanDto } from "./api";
 import { useEngineStore } from "./store";
 import { ParamField, ParamChoice, ResetParams } from "./ParamInput";
 
@@ -24,8 +24,22 @@ const METHODS = [
   { id: "ablative", label: "Ablative" },
 ];
 
-import { downloadText } from "./exporters";
-export { downloadText };
+/** Row label for the governing coolant limit. */
+function coolantLimitLabel(kind: "boiling" | "coking" | "none"): string {
+  if (kind === "boiling") return "Boiling margin";
+  if (kind === "coking") return "Coking margin";
+  return "Coolant limit";
+}
+
+export function downloadText(name: string, text: string) {
+  const blob = new Blob([text], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export function Cooling() {
   const store = useEngineStore();
@@ -35,15 +49,15 @@ export function Cooling() {
   const setMaterial = (m: string) => store.apply("wall_material", m);
   const setMethod = (m: string) => store.apply("cooling_method", m);
   const setNozzleMat = (m: string) => store.apply("nozzle_material", m);
-  // Coolant inlet pressure defaults to 1.5× Pc (mirrors simulate::design::coolant_pressure_pa).
-  const coolantPDefBar = Number((1.5 * (store.design?.operating_point.chamber_pressure ?? 0) / 1e5).toFixed(1));
-  // Default design velocity per coolant (mirrors cooling::coolant::Coolant::for_fuel).
-  const pair = store.design?.propellant.pair ?? "";
-  const coolantChoice = store.design?.choices?.["cooling.coolant"] ?? "fuel";
-  const coolantVelDef = coolantChoice === "water" ? 6 : pair === "LoxHydrogen" ? 100 : pair === "LoxMethane" ? 30 : 20;
-  const channelMode = (store.design?.params?.["cooling.channel_count"] ?? 0) > 0;
-  const l0Len = (store.design?.caches.find((c) => c.tier === "L0")?.payload as { chamber_length?: number } | undefined)?.chamber_length;
   const [study, setStudy] = useState<CoolingStudyDto | null>(null);
+  const coolants = pairCoolantNames(store.design?.propellant?.pair ?? "");
+  const coolantChoice = store.design?.choices?.["cooling.coolant"] ?? "fuel";
+  // Fuel/oxidizer coolants carry the propellant flow; water is an external supply.
+  const propellantCoolant = coolantChoice !== "Water";
+  const hasChannels = (store.design?.params?.["cooling.channel_count"] ?? 0) > 0;
+  const pcBar = (store.design?.operating_point?.chamber_pressure ?? 0) / 1e5;
+  const pressureFactor = store.design?.params?.["cooling.coolant_pressure_factor"] ?? DEFAULT_JACKET_PRESSURE_FACTOR;
+  const l0Len = (store.design?.caches.find((c) => c.tier === "L0")?.payload as { chamber_length?: number } | undefined)?.chamber_length;
 
   const rev = store.design?.meta.revision;
   useEffect(() => {
@@ -55,6 +69,8 @@ export function Cooling() {
   }, [material, method, nozzleMat, rev]);
 
   const over = study && study.regen.max_wall_temp_k > study.regen.wall_material_limit_k;
+  // Jacket ΔP the feed budget leaves: inlet − Pc − 20 % injector drop.
+  const dpBudget = study ? study.regen.coolant.inlet_pressure_pa - pcBar * 1e5 * 1.2 : 0;
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -102,20 +118,31 @@ export function Cooling() {
             ))}
           </select>
         </label>
-        <ParamChoice label="Coolant" k="cooling.coolant" def="fuel" options={["fuel", "water"]} hint="regen coolant: the engine's fuel (full fuel flow through the jacket) or water for a test-stand jacket" />
-        {channelMode ? (
-          <div className="qt-field" title="with discrete channels the velocity follows from the coolant flow and channel area">
-            <span>Coolant velocity (ṁ / channel area)</span>
-            <b>{study?.regen.coolant_velocity_m_s?.toFixed(1) ?? "—"} m/s</b>
-          </div>
+        <label className="qt-field" title="regen coolant — normally the fuel; water for a water-cooled test stand">
+          <span>Coolant</span>
+          <select value={coolantChoice} onChange={(e) => void store.apply("cooling.coolant", e.target.value)}>
+            <option value="fuel">Fuel ({coolants.fuel})</option>
+            {coolants.oxidizer && <option value="oxidizer">Oxidizer ({coolants.oxidizer})</option>}
+            <option value="Water">Water (test stand)</option>
+          </select>
+        </label>
+        {propellantCoolant ? (
+          <>
+            <ParamField label="Coolant flow fraction" k="cooling.coolant_flow_fraction" def={1} step={0.05} min={0.05} max={1} hint="share of the coolant propellant's flow routed through the jacket (1 = all of it, the usual regen circuit)" />
+            <ParamField label="Design velocity" k="cooling.coolant_velocity_m_s" def={6} step={1} dim="velocity" baseUnit="m/s" hint="inlet velocity that sizes the annular gap for the propellant flow; with channels the velocity follows from the flow and channel area" />
+          </>
         ) : (
-          <ParamField label="Coolant velocity" k="cooling.coolant_velocity_m_s" def={coolantVelDef} step={1} dim="velocity" baseUnit="m/s" hint="design coolant velocity at the throat — sizes the jacket gap; higher lowers the wall temperature but raises ΔP" />
+          <ParamField label="Coolant velocity" k="cooling.coolant_velocity_m_s" def={6} step={1} dim="velocity" baseUnit="m/s" hint="test-stand coolant velocity through the L0 jacket gap — sets the coolant flow; higher lowers the wall temperature" />
         )}
-        <ParamField label="Coolant pressure" k="cooling.coolant_pressure_bar" def={coolantPDefBar} step={0.5} dim="pressure" baseUnit="bar" hint="coolant inlet pressure (default 1.5× chamber pressure) — sets the boiling margin" />
-        <ParamField label="Liner thickness" k="cooling.liner_thickness_mm" def={1.0} step={0.1} dim="length" baseUnit="mm" hint="hot-wall liner the heat conducts through (typ. 0.6–1.5 mm) — sets the through-wall ΔT and thermal stress" />
+        <ParamField label="Jacket pressure / Pc" k="cooling.coolant_pressure_factor" def={DEFAULT_JACKET_PRESSURE_FACTOR} step={0.05} min={1} hint="jacket inlet pressure as a multiple of Pc (feed pressure budget: Pc + injector ΔP + jacket ΔP, Huzel & Huang); used unless an explicit pressure is set" />
+        <ParamField label="Coolant pressure" k="cooling.coolant_pressure_bar" def={Number((pressureFactor * pcBar).toFixed(1))} step={0.5} dim="pressure" baseUnit="bar" hint="coolant inlet pressure — follows Pc × factor until you set it; sets boiling vs supercritical" />
+        <ParamField label="Carbon deposit resistance" k="cooling.deposit_resistance_cm2k_w" def={0} step={0.05} min={0} unit="cm²·K/W" hint="Hot-wall soot/carbon layer in series with the gas film (0 = clean wall). Sources disagree for LOX/hydrocarbon main chambers: NASA TP-2862's 4.3 MPa LOX/RP-1 throat data imply ≈0.3; Cook's correlation (NASA CR-159790) gives several cm²·K/W but is flagged uncertain at high Pc; NASA's carbon-deposition program saw no wall deposits at O/F 2–4. Enter a value only if you have one for your injector." />
         <ParamField label="Cooling channels" k="cooling.channel_count" def={0} step={10} hint="discrete milled/printed channels; 0 → annular-gap model" />
         <ParamField label="Channel width" k="cooling.channel_width_mm" def={1.5} step={0.1} dim="length" baseUnit="mm" hint="rectangular channel width (used when channels > 0)" />
         <ParamField label="Channel height" k="cooling.channel_height_mm" def={3.0} step={0.1} dim="length" baseUnit="mm" hint="rectangular channel depth (used when channels > 0)" />
+        {hasChannels && (
+          <ParamField label="Liner thickness" k="cooling.liner_thickness_mm" def={DEFAULT_LINER_THICKNESS_MM} step={0.05} dim="length" baseUnit="mm" hint="hot-gas wall between the gas and the channels (default 0.89 mm, NASA TP-1834); the lands and closeout carry the pressure. Without channels the heat crosses L0's full chamber wall." />
+        )}
         {study && (
           <>
             <div className="qt-field">
@@ -132,30 +159,52 @@ export function Cooling() {
               <span>Margin</span>
               <b>{(study.regen.wall_material_limit_k - study.regen.max_wall_temp_k).toFixed(0)} K</b>
             </div>
-            <div className="qt-field">
+            <div className="qt-field" title="jacket friction drop; for a propellant coolant it must fit in the budget jacket inlet − Pc − 20 % injector drop">
               <span>Coolant ΔP</span>
-              <b>{(study.regen.coolant_dp_pa / 1000).toFixed(0)} kPa</b>
+              {propellantCoolant ? (
+                <span className={`qt-badge ${study.regen.coolant_dp_pa > dpBudget ? "failed" : "solved"}`}>
+                  {(study.regen.coolant_dp_pa / 1e5).toFixed(2)} bar (budget {(Math.max(0, dpBudget) / 1e5).toFixed(1)} bar)
+                </span>
+              ) : (
+                <b>{(study.regen.coolant_dp_pa / 1000).toFixed(0)} kPa</b>
+              )}
             </div>
-            {study.regen.coolant_name && (
-              <>
-                <div className="qt-field">
-                  <span>Coolant flow</span>
-                  <b>
-                    {study.regen.coolant_name} · {study.regen.coolant_mass_flow_kg_s?.toFixed(2)} kg/s · gap {((study.regen.coolant_gap_m ?? 0) * 1000).toFixed(2)} mm
-                  </b>
-                </div>
-                <div className="qt-field">
-                  <span>Coolant-side limit</span>
-                  {study.regen.coolant_limit_kind === "none" || study.regen.coolant_limit_k == null ? (
-                    <b>none (supercritical)</b>
-                  ) : (
-                    <span className={`qt-badge ${study.regen.min_boiling_margin_k < 0 ? "failed" : "solved"}`}>
-                      {study.regen.coolant_limit_kind} {study.regen.coolant_limit_k.toFixed(0)} K · margin {study.regen.min_boiling_margin_k.toFixed(0)} K
-                    </span>
-                  )}
-                </div>
-              </>
-            )}
+            <div className="qt-field" title={study.regen.coolant.source}>
+              <span>Coolant</span>
+              <b>
+                {study.regen.coolant.name} · {(study.regen.coolant.inlet_pressure_pa / 1e5).toFixed(1)} → {(study.regen.coolant.outlet_pressure_pa / 1e5).toFixed(1)} bar ·{" "}
+                {study.regen.coolant.supercritical ? "supercritical" : "subcritical"}
+              </b>
+            </div>
+            <div className="qt-field">
+              <span>{coolantLimitLabel(study.regen.coolant.limit_kind)}</span>
+              {study.regen.min_coolant_margin_k === null ? (
+                <b>n/a</b>
+              ) : (
+                <span className={`qt-badge ${study.regen.min_coolant_margin_k < 0 ? "failed" : "solved"}`}>
+                  {study.regen.min_coolant_margin_k.toFixed(0)} K (limit {(study.regen.coolant.limit_k ?? 0).toFixed(0)} K)
+                </span>
+              )}
+            </div>
+            <div className="qt-field">
+              <span>Coolant flow</span>
+              <b>{study.regen.coolant.mass_flow_kg_s.toFixed(3)} kg/s</b>
+            </div>
+            <div className="qt-field" title="bulk velocity at the inlet and its peak along the circuit (the coolant expands as it heats)">
+              <span>Velocity in / max</span>
+              <b>{study.regen.coolant.inlet_velocity_m_s.toFixed(1)} / {study.regen.coolant.max_velocity_m_s.toFixed(1)} m/s</b>
+            </div>
+            <div className="qt-field">
+              <span>Coolant in → out</span>
+              <b>{study.regen.coolant.inlet_temp_k.toFixed(0)} → {study.regen.coolant.outlet_temp_k.toFixed(0)} K</b>
+            </div>
+            <p className="qt-caption" style={{ marginTop: 4 }}>{study.regen.coolant.note}</p>
+            <div className="qt-field">
+              <span>Hot-gas wall</span>
+              <b>{(study.regen.wall_thickness_m * 1000).toFixed(2)} mm</b>
+            </div>
+            <p className="qt-caption" style={{ marginTop: 2 }} title={study.regen.coolant.source}>Properties: {study.regen.coolant.property_basis}</p>
+            <p className="qt-caption" style={{ marginTop: 2 }}>Coolant side: {study.regen.coolant.correlation}</p>
             <button
               className="qt-tool"
               style={{ marginTop: 8 }}

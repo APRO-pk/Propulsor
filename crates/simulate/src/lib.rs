@@ -120,21 +120,22 @@ pub fn resolve(design: &mut EngineDesign) -> Result<(), EngineError> {
                 }
                 Err(e) => (SolveStatus::Failed, None, Some(e.to_string())),
             },
-            Tier::L3 => match cooling::solve_l3(&l3_input(design)?) {
+            // A bad coolant choice (e.g. "oxidizer" with GOX) fails the L3 tier, not the whole resolve.
+            Tier::L3 => match l3_input(design).and_then(|input| cooling::solve_l3(&input)) {
                 Ok(r3) => {
                     let payload = serde_json::to_value(&r3).map_err(|e| EngineError::Internal(e.to_string()))?;
                     (SolveStatus::Solved, Some(payload), None)
                 }
                 Err(e) => (SolveStatus::Failed, None, Some(e.to_string())),
             },
-            Tier::L4 => match structures::solve_l4(&l4_input(design)?) {
+            Tier::L4 => match l4_input(design).and_then(|input| structures::solve_l4(&input)) {
                 Ok(r4) => {
                     let payload = serde_json::to_value(&r4).map_err(|e| EngineError::Internal(e.to_string()))?;
                     (SolveStatus::Solved, Some(payload), None)
                 }
                 Err(e) => (SolveStatus::Failed, None, Some(e.to_string())),
             },
-            Tier::L5 => match feedsystem::solve_l5(&l5_input(design)?) {
+            Tier::L5 => match l5_input(design).and_then(|input| feedsystem::solve_l5(&input)) {
                 Ok(r5) => {
                     let payload = serde_json::to_value(&r5).map_err(|e| EngineError::Internal(e.to_string()))?;
                     (SolveStatus::Solved, Some(payload), None)
@@ -268,64 +269,103 @@ fn l3_input(design: &EngineDesign) -> Result<cooling::L3Input, EngineError> {
     let l0: sizing_l0::L0Result = payload(design, Tier::L0)?;
     let l1: thermo::ThermoResult = payload(design, Tier::L1)?;
     let l2: gasdynamics::L2Result = payload(design, Tier::L2)?;
-    let coolant = design::coolant(design);
+    let pc = design.operating_point.chamber_pressure.as_si();
 
-    // Cool the whole inner wall: chamber barrel + convergent upstream of the
-    // throat (x < 0), then the L2 nozzle (throat at x = 0 → exit).
-    let mut stations = chamber_stations(&l0, l2.throat_diameter_m / 2.0);
-    stations.extend(l2.stations.iter().cloned());
+    // Coolant: the fuel by default (`cooling.coolant` = "fuel" | "oxidizer" | a
+    // coolant name such as "Water" for a water-cooled test stand).
+    let (coolant, stream) = cooling::coolants::select(design.propellant.pair, &design.choice("cooling.coolant", "fuel"))
+        .map_err(EngineError::Precondition)?;
+    // A propellant coolant carries the propellant flow the engine burns (all of
+    // it by default; `cooling.coolant_flow_fraction` < 1 bypasses part of it). An
+    // external coolant (test-stand water) has its flow set by its velocity instead.
+    let flow_fraction = design.param("cooling.coolant_flow_fraction", 1.0).clamp(0.05, 1.0);
+    let coolant_mass_flow_kg_s = match stream {
+        cooling::coolants::CoolantStream::Fuel => Some(flow_fraction * l0.fuel_flow.as_si()),
+        cooling::coolants::CoolantStream::Oxidizer => Some(flow_fraction * l0.oxidizer_flow.as_si()),
+        cooling::coolants::CoolantStream::External => None,
+    };
+    // Jacket inlet pressure: an explicit `cooling.coolant_pressure_bar` wins;
+    // otherwise it scales with Pc (feed pressure budget, default 1.35·Pc).
+    let coolant_pressure_pa = match design.params.get("cooling.coolant_pressure_bar") {
+        Some(&bar) => bar.max(0.5) * 1e5,
+        None => {
+            design
+                .param("cooling.coolant_pressure_factor", cooling::coolants::DEFAULT_JACKET_PRESSURE_FACTOR)
+                .max(1.0)
+                * pc
+        }
+    };
+
+    // Coolant-passage geometry. With discrete channels the heat crosses only the
+    // thin hot-gas liner between gas and channel (the lands and closeout carry the
+    // pressure); without channels it crosses L0's whole hoop-stress chamber wall.
+    let channel_count = design.param("cooling.channel_count", 0.0).max(0.0);
+    let wall_thickness_m = if channel_count > 0.0 {
+        design.param("cooling.liner_thickness_mm", DEFAULT_LINER_THICKNESS_MM).max(0.1) * 1e-3
+    } else {
+        l0.wall_thickness.as_si()
+    };
+
+    // Stations: chamber barrel + convergent (x < 0) ahead of the L2 nozzle contour,
+    // so the coolant absorbs the chamber heat load on its way to the injector.
+    let throat_r = l2.throat_diameter_m / 2.0;
+    let mut stations = chamber_stations(l0.chamber_diameter.as_si() / 2.0, throat_r, l0.chamber_length.as_si());
+    stations.extend(l2.stations.iter().copied());
 
     Ok(cooling::L3Input {
         stations,
-        throat_radius_m: l2.throat_diameter_m / 2.0,
+        throat_radius_m: throat_r,
         gamma: l1.gamma,
         tc_k: l1.tc_k,
-        pc_pa: design.operating_point.chamber_pressure.as_si(),
+        pc_pa: pc,
         c_star_m_s: l1.c_star_m_s,
         mw_g_per_mol: l1.mean_molecular_weight,
         wall_material: design::resolve_material(
             design,
             &design.materials.chamber.clone().unwrap_or_else(|| "OFHC Copper".into()),
         ),
-        // Heat crosses the thin hot-wall liner, not the L0 structural shell.
-        wall_thickness_m: design::liner_thickness_m(design),
+        wall_thickness_m,
         coolant_gap_m: l0.cooling_gap.as_si(),
-        // User-settable coolant conditions (persisted cooling.* params). The
-        // velocity defaults per coolant (design velocity at the throat).
-        coolant_velocity_m_s: design.param("cooling.coolant_velocity_m_s", coolant.default_velocity_m_s).max(0.5),
+        // User-settable coolant conditions (persisted cooling.* params). With a
+        // propellant coolant the velocity is the design velocity that sizes the
+        // annulus; with channels it follows from the flow and channel area.
+        coolant_velocity_m_s: design.param("cooling.coolant_velocity_m_s", 6.0).max(0.5),
+        coolant_mass_flow_kg_s,
         // Discrete cooling-channel geometry (0 channels → annular-gap model).
-        channel_count: design.param("cooling.channel_count", 0.0).max(0.0),
+        channel_count,
         channel_width_m: design.param("cooling.channel_width_mm", 1.5).max(0.1) * 1e-3,
         channel_height_m: design.param("cooling.channel_height_mm", 3.0).max(0.1) * 1e-3,
-        coolant_pressure_pa: design::coolant_pressure_pa(design),
-        // A fuel-cooled jacket carries the whole fuel flow; a water jacket keeps
-        // the legacy velocity × L0-gap flow.
-        coolant_mass_flow_kg_s: if coolant.name == "Water" { 0.0 } else { l0.fuel_flow.as_si() },
+        coolant_pressure_pa,
         coolant,
         film_cooling: None,
+        // Hot-wall carbon deposit (soot) resistance, entered in cm²·K/W as the
+        // sources quote it; default 0 = clean wall (see cooling::L3Input).
+        deposit_resistance_m2k_w: design.param("cooling.deposit_resistance_cm2k_w", 0.0).max(0.0) * 1e-4,
     })
 }
 
-/// Chamber barrel + convergent-section wall stations upstream of the throat, in
-/// the L2 frame (throat at x = 0, so these sit at x < 0). The injector face is at
-/// x = −L_c; the convergent is a cosine blend over a 30° half-angle length
-/// (capped at half the chamber), mirroring the frontend's engine profile.
-fn chamber_stations(l0: &sizing_l0::L0Result, r_t: f64) -> Vec<engine_core::ContourPoint> {
-    let r_c = (l0.chamber_diameter.as_si() / 2.0).max(r_t);
-    let l_c = l0.chamber_length.as_si().max(1e-4);
-    let l_conv = ((r_c - r_t) / 30f64.to_radians().tan()).min(0.5 * l_c);
-    let x_barrel_end = -l_conv;
-    let mut pts = Vec::new();
-    let n_barrel = 6;
+/// Default hot-gas liner thickness for a channel-wall chamber, mm: the 0.89 mm
+/// (0.035 in) throat hot-gas wall of the 60-channel copper chambers in NASA
+/// TP-1834 (Hannum & Price, 1981).
+pub const DEFAULT_LINER_THICKNESS_MM: f64 = 0.89;
+
+/// Chamber stations upstream of the throat (x < 0, throat excluded — L2 starts
+/// there), matching the 3D model's geometry: L0's cylinder-equivalent chamber
+/// length at the chamber radius, then a cosine-blended convergent whose length is
+/// set by a 30° half-angle.
+fn chamber_stations(r_c: f64, r_t: f64, l_c: f64) -> Vec<engine_core::ContourPoint> {
+    let r_c = r_c.max(r_t);
+    let l_conv = (r_c - r_t) / 30f64.to_radians().tan();
+    let (n_barrel, n_conv) = (12, 16);
+    let mut pts = Vec::with_capacity(n_barrel + n_conv);
     for i in 0..n_barrel {
-        let t = i as f64 / n_barrel as f64;
-        pts.push(engine_core::ContourPoint { x: -l_c + t * (x_barrel_end + l_c), r: r_c });
+        let x = -(l_conv + l_c) + l_c * i as f64 / n_barrel as f64;
+        pts.push(engine_core::ContourPoint { x, r: r_c });
     }
-    let n_conv = 12;
     for i in 0..n_conv {
-        let t = i as f64 / n_conv as f64; // stops short of the throat (L2 starts there)
+        let t = i as f64 / n_conv as f64;
         let r = r_t + (r_c - r_t) * (0.5 + 0.5 * (std::f64::consts::PI * t).cos());
-        pts.push(engine_core::ContourPoint { x: x_barrel_end + t * l_conv, r });
+        pts.push(engine_core::ContourPoint { x: -l_conv * (1.0 - t), r });
     }
     pts
 }
@@ -335,10 +375,10 @@ fn l4_input(design: &EngineDesign) -> Result<structures::L4Input, EngineError> {
     let l0: sizing_l0::L0Result = payload(design, Tier::L0)?;
     let l3: cooling::CoolingResult = payload(design, Tier::L3)?;
 
-    // Through-wall (hot-wall − cold-wall) drop from L3 — not hot wall minus
-    // ambient, which overstates the thermal stress several-fold.
-    // Only actively cooled walls carry the regen through-wall gradient.
-    let thermal_gradient = if design::actively_cooled(design) { l3.max_wall_dt_k.max(0.0) } else { 0.0 };
+    // Through-wall (hot-wall − coolant-side-wall) drop from L3 — not hot wall minus
+    // ambient, which overstates the thermal stress several-fold — and only for
+    // actively cooled walls.
+    let thermal_gradient = if design::actively_cooled(design) { design::max_wall_dt_k(&l3) } else { 0.0 };
 
     // Structural properties from the selected chamber material (not copper-pinned;
     // honors a user-defined "Custom" material too).
@@ -627,8 +667,107 @@ mod tests {
         assert!(d.caches.iter().all(|c| c.status == SolveStatus::Solved));
     }
 
-    fn l3_l4(d: &EngineDesign) -> (cooling::CoolingResult, structures::StructuresResult) {
-        (payload(d, Tier::L3).unwrap(), payload(d, Tier::L4).unwrap())
+    /// The computed c* efficiency must land where real engines do (~95–99.5 %),
+    /// not the 65–75 % the old unsourced SMD/residence model gave.
+    #[test]
+    fn computed_combustion_efficiency_is_realistic() {
+        use engine_core::design::FieldValue;
+        for (pair, thrust, pc, of) in [
+            ("LoxRp1", 50_000.0, 7.0e6, 2.6),
+            ("LoxRp1", 2_000.0, 2.0e6, 2.4),
+            ("LoxMethane", 20_000.0, 5.0e6, 3.3),
+            ("LoxEthanol", 5_000.0, 2.5e6, 1.4),
+            ("GoxKerosene", 1_000.0, 2.0e6, 2.0),
+            ("H2o2Kerosene", 3_000.0, 2.0e6, 7.0),
+        ] {
+            let mut d = EngineDesign::new("ere", "ci");
+            d.apply_field("propellant_pair", FieldValue::Text(pair.into())).unwrap();
+            d.apply_field("thrust", FieldValue::Num(thrust)).unwrap();
+            d.apply_field("chamber_pressure", FieldValue::Num(pc)).unwrap();
+            d.apply_field("of_ratio", FieldValue::Num(of)).unwrap();
+            let a = design::analysis_study(&mut d).unwrap();
+            println!("{pair}: {} | {}", a.ere.summary, a.injector.summary());
+            assert!(a.ere.applicable);
+            assert!(
+                (0.93..=1.0).contains(&a.ere.c_star_efficiency),
+                "{pair}: η_c* = {}",
+                a.ere.c_star_efficiency
+            );
+        }
+        // Hypergols are not vaporization-limited: reported as not computed.
+        let mut d = EngineDesign::new("ere", "ci");
+        d.apply_field("propellant_pair", FieldValue::Text("NtoMmh".into())).unwrap();
+        d.apply_field("of_ratio", FieldValue::Num(1.65)).unwrap();
+        let a = design::analysis_study(&mut d).unwrap();
+        assert!(!a.ere.applicable);
+    }
+
+    /// A 70-bar LOX/RP-1 regen engine is cooled by RP-1 at a jacket pressure that
+    /// scales with Pc — supercritical, so the coking limit replaces the boiling
+    /// check — not by water at 3 bar.
+    #[test]
+    fn regen_coolant_is_the_fuel_at_scaled_jacket_pressure() {
+        use engine_core::design::FieldValue;
+        let mut d = EngineDesign::new("regen", "ci");
+        d.apply_field("propellant_pair", FieldValue::Text("LoxRp1".into())).unwrap();
+        d.apply_field("thrust", FieldValue::Num(50_000.0)).unwrap();
+        d.apply_field("chamber_pressure", FieldValue::Num(70e5)).unwrap();
+        d.apply_field("of_ratio", FieldValue::Num(2.6)).unwrap();
+        resolve(&mut d).unwrap();
+        let r: cooling::CoolingResult = payload(&d, Tier::L3).unwrap();
+        println!("{}\n{}", r.summary(), r.coolant.note);
+        assert_eq!(r.coolant.name, "RP-1");
+        // The jacket carries the fuel the engine burns, not a free ρ·v·A flow.
+        let l0: sizing_l0::L0Result = payload(&d, Tier::L0).unwrap();
+        assert!((r.coolant.mass_flow_kg_s - l0.fuel_flow.as_si()).abs() < 1e-9);
+        assert!((r.coolant.inlet_pressure_pa - 1.35 * 70e5).abs() < 1.0);
+        assert!(r.coolant.supercritical);
+        assert_eq!(r.coolant.limit_kind, "coking");
+        assert!(r.min_boiling_margin_k.is_none());
+        // The circuit covers the chamber (x < 0, near Pc) as well as the nozzle, and
+        // the annular model conducts through L0's chamber wall.
+        let chamber: Vec<_> = r.stations.iter().filter(|s| s.x < 0.0).collect();
+        assert!(chamber.len() >= 20 && chamber.iter().all(|s| s.gas_pressure_pa > 0.6 * 70e5));
+        assert!((r.wall_thickness_m - l0.wall_thickness.as_si()).abs() < 1e-12);
+
+        // Discrete channels conduct through the thin liner instead (NASA TP-1834 default).
+        d.apply_field("cooling.channel_count", FieldValue::Num(60.0)).unwrap();
+        resolve(&mut d).unwrap();
+        let ch: cooling::CoolingResult = payload(&d, Tier::L3).unwrap();
+        assert!((ch.wall_thickness_m - DEFAULT_LINER_THICKNESS_MM * 1e-3).abs() < 1e-12);
+        assert!(ch.max_wall_temp_k < r.max_wall_temp_k, "liner {} vs thick wall {}", ch.max_wall_temp_k, r.max_wall_temp_k);
+        d.apply_field("cooling.channel_count", FieldValue::Text("__reset__".into())).unwrap();
+
+        // The jacket-pressure factor and the coolant are user inputs.
+        d.apply_field("cooling.coolant_pressure_factor", FieldValue::Num(1.2)).unwrap();
+        d.apply_field("cooling.coolant", FieldValue::Text("oxidizer".into())).unwrap();
+        resolve(&mut d).unwrap();
+        let r: cooling::CoolingResult = payload(&d, Tier::L3).unwrap();
+        assert_eq!(r.coolant.name, "LOX");
+        assert!((r.coolant.inlet_pressure_pa - 1.2 * 70e5).abs() < 1.0);
+        assert_eq!(r.coolant.limit_kind, "none");
+
+        // An explicit pressure overrides the Pc scaling: water at 3 bar boils-checks.
+        d.apply_field("cooling.coolant", FieldValue::Text("Water".into())).unwrap();
+        d.apply_field("cooling.coolant_pressure_bar", FieldValue::Num(3.0)).unwrap();
+        resolve(&mut d).unwrap();
+        let r: cooling::CoolingResult = payload(&d, Tier::L3).unwrap();
+        assert_eq!(r.coolant.name, "Water");
+        assert_eq!(r.coolant.limit_kind, "boiling");
+        assert!(r.min_boiling_margin_k.is_some());
+    }
+
+    /// GOX cannot regen-cool: choosing the oxidizer fails the L3 tier only.
+    #[test]
+    fn gaseous_oxidizer_coolant_fails_only_l3() {
+        use engine_core::design::FieldValue;
+        let mut d = sizing_l0::krzycki_golden_design();
+        d.apply_field("cooling.coolant", FieldValue::Text("oxidizer".into())).unwrap();
+        resolve(&mut d).unwrap();
+        let l3 = d.caches.iter().find(|c| c.tier == Tier::L3).unwrap();
+        assert_eq!(l3.status, SolveStatus::Failed);
+        assert!(l3.error.as_deref().unwrap_or("").contains("gaseous"));
+        assert!(d.caches.iter().find(|c| c.tier == Tier::L2).unwrap().status == SolveStatus::Solved);
     }
 
     #[test]
@@ -637,88 +776,13 @@ mod tests {
         // giving GPa-level thermal stress on every regen design.
         let mut d = EngineDesign::new("test", "ci");
         resolve(&mut d).unwrap();
-        let (l3, l4) = l3_l4(&d);
-        assert!(l3.max_wall_dt_k > 0.0 && l3.max_wall_dt_k < l3.max_wall_temp_k - 300.0);
+        let l3: cooling::CoolingResult = payload(&d, Tier::L3).unwrap();
+        let l4: structures::StructuresResult = payload(&d, Tier::L4).unwrap();
+        let dt = design::max_wall_dt_k(&l3);
+        assert!(dt > 0.0 && dt < l3.max_wall_temp_k - 300.0, "through-wall ΔT {dt}");
         let mat = design::resolve_material(&d, &d.materials.chamber.clone().unwrap_or_else(|| "OFHC Copper".into()));
-        let expected = mat.youngs_modulus_pa * mat.cte_per_k * l3.max_wall_dt_k / (2.0 * (1.0 - 0.33));
+        let expected = mat.youngs_modulus_pa * mat.cte_per_k * dt / (2.0 * (1.0 - 0.33));
         assert!((l4.thermal_stress_pa - expected).abs() < 1e-6 * expected);
-    }
-
-    #[test]
-    fn regen_conducts_through_the_liner_not_the_structural_shell() {
-        // The liner thickness param (not the L0 shell) sets the conduction drop:
-        // a thicker liner raises the through-wall ΔT roughly in proportion.
-        let mut d = EngineDesign::new("test", "ci");
-        resolve(&mut d).unwrap();
-        let (thin, _) = l3_l4(&d);
-        d.apply_field("cooling.liner_thickness_mm", engine_core::FieldValue::Num(2.0)).unwrap();
-        resolve(&mut d).unwrap();
-        let (thick, _) = l3_l4(&d);
-        assert!(thick.max_wall_dt_k > 1.5 * thin.max_wall_dt_k, "{} vs {}", thick.max_wall_dt_k, thin.max_wall_dt_k);
-    }
-
-    #[test]
-    fn coolant_pressure_defaults_to_one_and_a_half_pc() {
-        let mut d = EngineDesign::new("test", "ci");
-        resolve(&mut d).unwrap();
-        let pc = d.operating_point.chamber_pressure.as_si();
-        let (l3, _) = l3_l4(&d);
-        assert!((l3.stations[0].coolant_pressure_pa - 1.5 * pc).abs() < 1.0);
-        // An explicit user value still wins.
-        d.apply_field("cooling.coolant_pressure_bar", engine_core::FieldValue::Num(40.0)).unwrap();
-        resolve(&mut d).unwrap();
-        let (l3, _) = l3_l4(&d);
-        assert!((l3.stations[0].coolant_pressure_pa - 40e5).abs() < 1.0);
-    }
-
-    #[test]
-    fn regen_is_fuel_cooled_by_default_and_water_on_request() {
-        let mut d = EngineDesign::new("test", "ci");
-        resolve(&mut d).unwrap();
-        let l0: sizing_l0::L0Result = payload(&d, Tier::L0).unwrap();
-        let (l3, _) = l3_l4(&d);
-        let fuel = cooling::coolant::Coolant::for_fuel(d.propellant.pair);
-        assert_eq!(l3.coolant_name, fuel.name);
-        assert!((l3.coolant_mass_flow_kg_s - l0.fuel_flow.as_si()).abs() < 1e-9);
-
-        d.apply_field("cooling.coolant", engine_core::FieldValue::Text("water".into())).unwrap();
-        resolve(&mut d).unwrap();
-        let (l3, _) = l3_l4(&d);
-        assert_eq!(l3.coolant_name, "Water");
-    }
-
-    #[test]
-    fn supercritical_hydrogen_has_no_coolant_side_limit() {
-        let mut d = EngineDesign::new("test", "ci");
-        d.apply_field("propellant_pair", engine_core::FieldValue::Text("LoxHydrogen".into())).unwrap();
-        d.apply_field("mixture_ratio", engine_core::FieldValue::Num(5.5)).unwrap();
-        resolve(&mut d).unwrap();
-        let (l3, _) = l3_l4(&d);
-        assert_eq!(l3.coolant_name, "Hydrogen");
-        assert_eq!(l3.coolant_limit_kind, cooling::coolant::CoolantLimitKind::None);
-        assert!(l3.coolant_limit_k.is_none());
-        assert_eq!(l3.min_boiling_margin_k, 0.0);
-    }
-
-    #[test]
-    fn l3_cools_the_chamber_and_convergent_too() {
-        let mut d = EngineDesign::new("test", "ci");
-        resolve(&mut d).unwrap();
-        let l0: sizing_l0::L0Result = payload(&d, Tier::L0).unwrap();
-        let (l3, _) = l3_l4(&d);
-        let first = &l3.stations[0];
-        // Starts at the injector face on the chamber radius…
-        assert!((first.x + l0.chamber_length.as_si()).abs() < 1e-9);
-        assert!((first.r - l0.chamber_diameter.as_si() / 2.0).abs() < 1e-9);
-        // …the peak heat flux sits in the throat region (Bartz peaks at or just
-        // upstream of the geometric throat), not in the subsonic chamber…
-        let r_t = l3.stations.iter().map(|s| s.r).fold(f64::INFINITY, f64::min);
-        let peak = l3.stations.iter().max_by(|a, b| a.heat_flux_w_m2.total_cmp(&b.heat_flux_w_m2)).unwrap();
-        assert!(peak.r < 1.02 * r_t, "peak flux at x = {}, r/r_t = {}", peak.x, peak.r / r_t);
-        assert!(first.heat_flux_w_m2 < peak.heat_flux_w_m2);
-        // …and counterflow coolant leaves at the injector end, hottest.
-        let hottest = l3.stations.iter().map(|s| s.coolant_temp_k).fold(0.0, f64::max);
-        assert!((first.coolant_temp_k - hottest).abs() < 1e-9);
     }
 
     #[test]

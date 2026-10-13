@@ -10,3 +10,6 @@ engine-core = { path = "../engine-core" }
 gasdynamics = { path = "../gasdynamics" }
 thermo = { path = "../thermo" }
 serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

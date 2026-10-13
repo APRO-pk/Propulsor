@@ -15,17 +15,20 @@ const STOICH_OF: Record<string, number> = {
 // Complete starting-point designs (applied through the normal field API). Each is
 // configured the way such an engine is actually built, so it passes its checks:
 //  · 500 N GOX/kerosene — water-jacketed test-stand engine (Krzycki-style)
-//  · 25 kN LOX/methane — fuel-regen copper chamber, ~45 m/s at the throat
+//  · 25 kN LOX/methane — fuel-regen CuCrZr chamber, 80 milled channels
+//    (0.8 × 1.5 mm) fed at 2× Pc
 //  · 100 kN LOX/RP-1 — ablative chamber (NASA Fastrac / Merlin 1A class); a
 //    regen RP-1 chamber at 70 bar relies on soot deposits this model omits
 //  · 2 kN N₂O/propane — ablative: too little fuel flow to regen-cool
-//  · 50 kN LOX/LH₂ — copper-alloy liner with high-velocity hydrogen (SSME/Vulcain)
+//  · 50 kN LOX/LH₂ — CuCrZr channel-wall chamber (100 × 1.0 × 2.0 mm, 2.2× Pc)
+//    plus a 10 % hydrogen film; channels alone can't meet both the wall limit
+//    and the jacket pressure budget in this model (real engines run a few %)
 const PRESETS: { name: string; fields: [string, number | string][] }[] = [
-  { name: "GOX/Kerosene test · 500 N", fields: [["propellant_pair", "GoxKerosene"], ["thrust", 500], ["chamber_pressure", 15e5], ["mixture_ratio", 2.4], ["l_star", 1.0], ["wall_material", "OFHC Copper"], ["cooling_method", "regen"], ["cooling.coolant", "water"], ["cooling.coolant_velocity_m_s", 20], ["cooling.coolant_pressure_bar", 40]] },
-  { name: "LOX/Methane · 25 kN", fields: [["propellant_pair", "LoxMethane"], ["thrust", 25000], ["chamber_pressure", 60e5], ["mixture_ratio", 3.4], ["l_star", 0.8], ["wall_material", "CuCrZr"], ["cooling_method", "regen"], ["cooling.coolant_velocity_m_s", 45]] },
+  { name: "GOX/Kerosene test · 500 N", fields: [["propellant_pair", "GoxKerosene"], ["thrust", 500], ["chamber_pressure", 15e5], ["mixture_ratio", 2.4], ["l_star", 1.0], ["wall_material", "OFHC Copper"], ["cooling_method", "regen"], ["cooling.coolant", "Water"], ["cooling.coolant_velocity_m_s", 20], ["cooling.coolant_pressure_bar", 40]] },
+  { name: "LOX/Methane · 25 kN", fields: [["propellant_pair", "LoxMethane"], ["thrust", 25000], ["chamber_pressure", 60e5], ["mixture_ratio", 3.4], ["l_star", 0.8], ["wall_material", "CuCrZr"], ["cooling_method", "regen"], ["cooling.channel_count", 80], ["cooling.channel_width_mm", 0.8], ["cooling.channel_height_mm", 1.5], ["cooling.coolant_pressure_factor", 2.0]] },
   { name: "LOX/RP-1 booster · 100 kN", fields: [["propellant_pair", "LoxRp1"], ["thrust", 100000], ["chamber_pressure", 70e5], ["mixture_ratio", 2.6], ["l_star", 1.0], ["wall_material", "SS 316L"], ["cooling_method", "ablative"]] },
   { name: "N₂O/Propane · 2 kN", fields: [["propellant_pair", "NitrousPropane"], ["thrust", 2000], ["chamber_pressure", 20e5], ["mixture_ratio", 6.5], ["l_star", 1.1], ["cooling_method", "ablative"]] },
-  { name: "LOX/LH₂ upper · 50 kN", fields: [["propellant_pair", "LoxHydrogen"], ["thrust", 50000], ["chamber_pressure", 50e5], ["mixture_ratio", 5.5], ["l_star", 0.7], ["wall_material", "CuCrZr"], ["cooling_method", "regen"], ["cooling.coolant_velocity_m_s", 150]] },
+  { name: "LOX/LH₂ upper · 50 kN", fields: [["propellant_pair", "LoxHydrogen"], ["thrust", 50000], ["chamber_pressure", 50e5], ["mixture_ratio", 5.5], ["l_star", 0.7], ["wall_material", "CuCrZr"], ["cooling_method", "film"], ["cooling.film_fraction", 0.1], ["cooling.channel_count", 100], ["cooling.channel_width_mm", 1.0], ["cooling.channel_height_mm", 2.0], ["cooling.coolant_pressure_factor", 2.2]] },
 ];
 
 const STEPS = ["Propellant & mission", "Performance / O·F", "Nozzle & expansion", "Cooling", "Feed & turbomachinery", "Review & export"];
