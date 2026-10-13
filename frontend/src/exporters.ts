@@ -1,5 +1,16 @@
 import type { L0ResultDto, L2ResultDto } from "./api";
 
+/** Save a text (CSV) file in the browser. */
+export function downloadText(name: string, text: string) {
+  const blob = new Blob([text], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export interface ProfilePoint {
   x: number;
   r: number;

@@ -84,7 +84,13 @@ export function Analysis() {
           </div>
           <div className="qt-field" style={{ minWidth: 200 }}><span>Min safety margin</span><b>{a.stress.min_margin.toFixed(2)}</b></div>
           <div className="qt-field" style={{ minWidth: 200 }}><span>Stations</span><b>{a.stress.stations.length}</b></div>
+          <div style={{ minWidth: 260 }}>
+            <ParamField label="Shell safety factor" k="structures.wall_safety_factor" def={1.5} step={0.1} hint="pressure-shell thickness = SF·Pc·r / material allowable (L0)" />
+          </div>
         </div>
+        <p className="muted" style={{ margin: "6px 0 0" }}>
+          Margin = min(S / σ_hoop, 2S / (σ_hoop + σ_thermal)): pressure stress against the allowable, plus the self-limiting thermal stress against the shakedown limit.
+        </p>
         <StressStrip stations={a.stress.stations} />
         <button className="qt-tool" style={{ marginTop: 10 }} onClick={() => downloadText("stress_field.csv", a.stress_csv)}>Export stress field CSV (FEM)</button>
       </fieldset>

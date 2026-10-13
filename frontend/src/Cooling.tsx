@@ -57,6 +57,7 @@ export function Cooling() {
   const hasChannels = (store.design?.params?.["cooling.channel_count"] ?? 0) > 0;
   const pcBar = (store.design?.operating_point?.chamber_pressure ?? 0) / 1e5;
   const pressureFactor = store.design?.params?.["cooling.coolant_pressure_factor"] ?? DEFAULT_JACKET_PRESSURE_FACTOR;
+  const l0Len = (store.design?.caches.find((c) => c.tier === "L0")?.payload as { chamber_length?: number } | undefined)?.chamber_length;
 
   const rev = store.design?.meta.revision;
   useEffect(() => {
@@ -225,7 +226,7 @@ export function Cooling() {
               <ParamField label="Coolant density" k="cooling.film_coolant_density" def={5} step={0.5} unit="kg/m³" />
               <ParamField label="Coolant velocity" k="cooling.film_coolant_velocity" def={120} step={10} dim="velocity" baseUnit="m/s" hint="used when film fraction = 0; higher velocity → thicker film" />
               <ParamField label="Slot height" k="cooling.film_slot_height_mm" def={1.5} step={0.1} dim="length" baseUnit="mm" />
-              <ParamField label="Injection x" k="cooling.film_injection_x_m" def={0} step={0.01} dim="length" baseUnit="m" hint="axial start of the film" />
+              <ParamField label="Injection x" k="cooling.film_injection_x_m" def={-(l0Len ?? 0)} step={0.01} dim="length" baseUnit="m" hint="axial start of the film (throat at 0; default: injector face at −L_c)" />
             </>}
             {method === "ablative" && <>
               <ParamChoice label="Ablative material" k="cooling.ablative_material" def="Carbon phenolic" options={["Carbon phenolic", "Silica phenolic"]} />

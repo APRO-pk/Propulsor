@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { validationStudy, type SensorValidationDto, type SpatialSensorDto } from "./api";
 import { useEngineStore } from "./store";
-import { downloadText } from "./Cooling";
+import { downloadText } from "./exporters";
 
 const AXIS = { fill: "#6b7280", fontSize: 11 } as const;
 const TT = { background: "#fff", border: "1px solid #b9bcc4", borderRadius: 4, fontSize: 12 } as const;

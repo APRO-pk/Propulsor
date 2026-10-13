@@ -123,6 +123,13 @@ body {
 .qt-tool:active {
   background: linear-gradient(#dfe2e7, #eceef1);
 }
+.qt-tool:disabled,
+.qt-tool:disabled:hover {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: linear-gradient(var(--qt-btn-top), var(--qt-btn-bottom));
+  border-color: var(--qt-border);
+}
 .qt-tool.on {
   background: linear-gradient(#dce8fb, #cadcf6);
   border-color: var(--qt-highlight-border);
@@ -305,9 +312,9 @@ select:focus {
   padding: 6px 8px 0;
   background: linear-gradient(#e9e9ec, #e2e2e6);
   border-bottom: 1px solid var(--qt-border);
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
+  /* Wrap onto a second row rather than hiding tabs off-screen. */
+  flex-wrap: wrap;
+  row-gap: 2px;
 }
 .qt-tab {
   flex: 0 0 auto;

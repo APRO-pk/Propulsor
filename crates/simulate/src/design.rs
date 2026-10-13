@@ -97,7 +97,8 @@ pub fn cooling_study(design: &mut EngineDesign, material_name: &str, method: &st
     } else {
         design.param("cooling.film_coolant_velocity", 120.0).max(1.0)
     };
-    let film_injection_x = design.param("cooling.film_injection_x_m", 0.0);
+    // Film slot at the injector face by default (x = −L_c; the throat is x = 0).
+    let film_injection_x = design.param("cooling.film_injection_x_m", -l0.chamber_length.as_si());
     let film_visc = design.param("cooling.film_coolant_viscosity", 2.0e-5).max(1e-7);
     let ablative_burn_time = design.param("cooling.ablative_burn_time_s", 30.0).max(1.0);
     let ablative_sf = design.param("cooling.ablative_safety_factor", 1.5).clamp(1.0, 3.0);
@@ -711,7 +712,8 @@ pub fn control_study(design: &mut EngineDesign, feed_type: &str) -> Result<feeds
         throat_area_m2: l0.throat_area.as_si(),
         pc_bandwidth_hz: design.param("control.pc_bandwidth_hz", 5.0).clamp(0.1, 100.0),
         mr_bandwidth_hz: design.param("control.mr_bandwidth_hz", 20.0).clamp(0.1, 200.0),
-        sample_rate_hz: design.param("control.sample_rate_hz", 50.0).clamp(1.0, 5000.0),
+        // 500 Hz keeps the default 20 Hz MR loop under the ~fs/10 digital-loop rule.
+        sample_rate_hz: design.param("control.sample_rate_hz", 500.0).clamp(1.0, 5000.0),
         combustion_delay_ms: design.param("control.combustion_delay_ms", 1.5).clamp(0.0, 20.0),
         throttle_target: design.param("control.throttle_target", 0.8).clamp(0.2, 1.5),
         // Redline defaults to a margin above the nominal turbine-inlet temperature
@@ -761,14 +763,18 @@ pub fn collect_issues(design: &mut EngineDesign) -> Result<IssuesReport, EngineE
 
     // --- Cooling ---
     let material = design.materials.chamber.clone().unwrap_or_else(|| "OFHC Copper".into());
-    let method = design
-        .geometry
-        .cooling_jacket
-        .as_ref()
-        .and_then(|c| c.cooling_method.clone())
-        .unwrap_or_else(|| "regen".into());
+    let method = cooling_method(design);
     if let Ok(c) = cooling_study(design, &material, &method) {
-        if c.regen.max_wall_temp_k > c.regen.wall_material_limit_k {
+        // The regen wall/coolant checks apply only to actively cooled walls; a
+        // radiation- or ablatively-cooled engine is judged by its own result.
+        let actively_cooled = method == "regen" || method == "film";
+        if let Some(r) = c.radiation.as_ref().filter(|r| !r.material_ok) {
+            add("fail", "Cooling", format!(
+                "Radiation-cooled wall {:.0} K exceeds the {} limit {:.0} K",
+                r.equilibrium_wall_temp_k, c.selected_material, r.material_limit_k
+            ));
+        }
+        if actively_cooled && c.regen.max_wall_temp_k > c.regen.wall_material_limit_k {
             add("fail", "Cooling", format!(
                 "Wall temperature {:.0} K exceeds the {} limit {:.0} K (margin {:.0} K)",
                 c.regen.max_wall_temp_k, c.selected_material, c.regen.wall_material_limit_k,
@@ -776,7 +782,7 @@ pub fn collect_issues(design: &mut EngineDesign) -> Result<IssuesReport, EngineE
             ));
         }
         let coolant = &c.regen.coolant;
-        if let Some(m) = c.regen.min_coolant_margin_k.filter(|m| *m < 0.0) {
+        if let Some(m) = c.regen.min_coolant_margin_k.filter(|m| actively_cooled && *m < 0.0) {
             let what = if coolant.limit_kind == "coking" {
                 format!("{} cokes — coolant-side wall exceeds the {:.0} K coking limit", coolant.name, coolant.limit_k.unwrap_or(0.0))
             } else {
@@ -876,7 +882,7 @@ pub fn collect_issues(design: &mut EngineDesign) -> Result<IssuesReport, EngineE
             if tp.gg_cycle.margin < 1.0 {
                 add("warn", "Turbopumps", format!("Gas-generator cycle under-powered — turbine/pump power {:.2}", tp.gg_cycle.margin));
             }
-            let bore_mm = design.param("turbo.bearing_bore_mm", 45.0);
+            let bore_mm = bearing_bore_mm(design, tp.shaft.diameter_m);
             let shaft_mm = tp.shaft.diameter_m * 1000.0;
             if bore_mm > 3.0 * shaft_mm {
                 add("warn", "Turbopumps", format!(
@@ -926,6 +932,36 @@ pub fn reactant_temps(design: &EngineDesign) -> (f64, f64) {
         design.param("reactant.fuel_temp_k", 298.15).max(10.0),
         design.param("reactant.ox_temp_k", 298.15).max(10.0),
     )
+}
+
+/// The design's cooling method (`"regen" | "film" | "radiation" | "ablative"`).
+pub fn cooling_method(design: &EngineDesign) -> String {
+    design
+        .geometry
+        .cooling_jacket
+        .as_ref()
+        .and_then(|c| c.cooling_method.clone())
+        .unwrap_or_else(|| "regen".into())
+}
+
+/// Whether the wall is actively (regen/film) cooled, so the L3 regen solve's
+/// through-wall gradient applies. Ablative liners insulate the case and radiation-
+/// cooled walls carry no forced through-wall flux, so their thermal (secondary)
+/// stress is negligible.
+pub fn actively_cooled(design: &EngineDesign) -> bool {
+    matches!(cooling_method(design).as_str(), "regen" | "film")
+}
+
+/// Bearing bore, mm: the user's value, else the shaft diameter rounded up to the
+/// next standard 5 mm bore.
+pub fn bearing_bore_mm(design: &EngineDesign, shaft_diameter_m: f64) -> f64 {
+    design.param("turbo.bearing_bore_mm", ((shaft_diameter_m * 1000.0 / 5.0).ceil() * 5.0).max(5.0))
+}
+
+/// Largest through-wall (hot-wall − coolant-side-wall) temperature drop in an L3
+/// solve, K: the gradient that drives the liner's thermal stress.
+pub fn max_wall_dt_k(l3: &cooling::CoolingResult) -> f64 {
+    l3.stations.iter().map(|s| (s.wall_temp_k - s.coolant_wall_temp_k).max(0.0)).fold(0.0, f64::max)
 }
 
 /// Resolve a wall-material name to a [`cooling::materials::Material`]. The name
@@ -1297,22 +1333,18 @@ pub fn analysis_study(design: &mut EngineDesign) -> Result<AnalysisStudy, Engine
     let material = resolve_material(design, &design.materials.chamber.clone().unwrap_or_else(|| "OFHC Copper".into()));
     let throat_r = l3.stations.iter().map(|s| s.r).fold(f64::INFINITY, f64::min).max(1e-4);
     let mut stations: Vec<structures::distribution::StressStationInput> = Vec::new();
-    // Chamber stations at full chamber pressure.
-    for i in 0..4 {
-        stations.push(structures::distribution::StressStationInput {
-            x: -l0.chamber_length.as_si() * (1.0 - i as f64 / 3.0),
-            r_inner_m: l0.chamber_diameter.as_si() / 2.0,
-            wall_thickness_m: l0.wall_thickness.as_si(),
-            gas_pressure_pa: pc,
-            wall_temp_hot_k: l3.max_wall_temp_k,
-            wall_temp_cold_k: 400.0,
-        });
-    }
-    // Nozzle stations (L3 also covers the chamber, x < 0, which the synthetic
-    // chamber stations above stand in for): gas pressure from the local area ratio.
-    for s in l3.stations.iter().filter(|s| s.x >= 0.0) {
+    // Every L3 wall station (chamber, convergent, nozzle): gas pressure from the
+    // local area ratio — subsonic upstream of the throat (x < 0), supersonic after.
+    // The thermal (secondary) stress uses the through-wall drop to the coolant-side
+    // wall, and only for actively cooled walls.
+    let active = actively_cooled(design);
+    for s in &l3.stations {
         let ar = (s.r / throat_r).powi(2).max(1.0);
-        let m = gasdynamics::quasi1d::mach_from_area(ar, l1.gamma);
+        let m = if s.x < 0.0 {
+            gasdynamics::quasi1d::subsonic_mach_from_area(ar, l1.gamma)
+        } else {
+            gasdynamics::quasi1d::mach_from_area(ar, l1.gamma)
+        };
         let p = pc * gasdynamics::quasi1d::pressure_ratio(m, l1.gamma);
         stations.push(structures::distribution::StressStationInput {
             x: s.x,
@@ -1320,7 +1352,7 @@ pub fn analysis_study(design: &mut EngineDesign) -> Result<AnalysisStudy, Engine
             wall_thickness_m: l0.wall_thickness.as_si(),
             gas_pressure_pa: p,
             wall_temp_hot_k: s.wall_temp_k,
-            wall_temp_cold_k: s.coolant_temp_k,
+            wall_temp_cold_k: if active { s.coolant_wall_temp_k } else { s.wall_temp_k },
         });
     }
     let stress = structures::distribution::solve_stress_field(&stations, &structures::distribution::StressMaterial {
@@ -1418,7 +1450,6 @@ pub fn turbopump_study(design: &mut EngineDesign, speed_rpm: f64) -> Result<Turb
     let brg_radial = design.param("turbo.bearing_radial_load_n", 10_000.0);
     let brg_axial = design.param("turbo.bearing_axial_load_n", 4_000.0);
     let brg_life = design.param("turbo.bearing_life_hours", 5_000.0);
-    let brg_bore = design.param("turbo.bearing_bore_mm", 45.0) / 1000.0;
     // DN limit: Cannon (NASA) gives 1.6–2.1 million for rolling-element bearings.
     let dn_limit = design.param("turbo.bearing_dn_limit_millions", 2.0).clamp(0.5, 3.0) * 1e6;
 
@@ -1460,7 +1491,10 @@ pub fn turbopump_study(design: &mut EngineDesign, speed_rpm: f64) -> Result<Turb
         length_m: shaft_len,
         youngs_modulus_pa: design.param("turbo.shaft_youngs_gpa", 200.0) * 1e9,
         lumped_mass_kg: design.param("turbo.shaft_lumped_mass_kg", 6.0),
+        // Size for stiffness too, so the default shaft runs subcritical.
+        min_critical_ratio: design.param("turbo.shaft_critical_ratio", 1.25).max(0.0),
     });
+    let brg_bore = bearing_bore_mm(design, shaft.diameter_m) / 1000.0;
 
     let bearing = turbopumps::solve_bearing(&turbopumps::BearingInput {
         radial_load_n: brg_radial,

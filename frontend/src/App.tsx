@@ -1,22 +1,24 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useEngineStore } from "./store";
-import { downloadText } from "./Cooling";
+import { downloadText } from "./exporters";
 import { CommitNumberField } from "./ParamInput";
-import { issuesReport, type IssuesReportDto } from "./api";
-import { CrossSection } from "./CrossSection";
-import { PerfMapChart } from "./PerfMapChart";
-import { EngineViewer } from "./EngineViewer";
+import { issuesReport, useBackendMode, type IssuesReportDto } from "./api";
 import { DesignWizard } from "./DesignWizard";
-import { Cooling } from "./Cooling";
-import { Turbopumps } from "./Turbopumps";
-import { Analysis } from "./Analysis";
-import { FeedSystem } from "./FeedSystem";
-import { SystemAssembly } from "./SystemAssembly";
-import { Dashboard } from "./Dashboard";
-import { Trades } from "./Trades";
-import { Blades } from "./Blades";
-import { Validation } from "./Validation";
-import { Control } from "./Control";
+
+// Tabs load on demand so three.js / recharts stay out of the startup bundle.
+const CrossSection = lazy(() => import("./CrossSection").then((m) => ({ default: m.CrossSection })));
+const PerfMapChart = lazy(() => import("./PerfMapChart").then((m) => ({ default: m.PerfMapChart })));
+const EngineViewer = lazy(() => import("./EngineViewer").then((m) => ({ default: m.EngineViewer })));
+const Cooling = lazy(() => import("./Cooling").then((m) => ({ default: m.Cooling })));
+const Turbopumps = lazy(() => import("./Turbopumps").then((m) => ({ default: m.Turbopumps })));
+const Analysis = lazy(() => import("./Analysis").then((m) => ({ default: m.Analysis })));
+const FeedSystem = lazy(() => import("./FeedSystem").then((m) => ({ default: m.FeedSystem })));
+const SystemAssembly = lazy(() => import("./SystemAssembly").then((m) => ({ default: m.SystemAssembly })));
+const Dashboard = lazy(() => import("./Dashboard").then((m) => ({ default: m.Dashboard })));
+const Trades = lazy(() => import("./Trades").then((m) => ({ default: m.Trades })));
+const Blades = lazy(() => import("./Blades").then((m) => ({ default: m.Blades })));
+const Validation = lazy(() => import("./Validation").then((m) => ({ default: m.Validation })));
+const Control = lazy(() => import("./Control").then((m) => ({ default: m.Control })));
 
 const IN = 0.0254;
 const KG_TO_LB = 1 / 0.45359237;
@@ -45,6 +47,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("design");
   const [si, setSi] = useState(true);
   const [issues, setIssues] = useState<IssuesReportDto | null>(null);
+  const backend = useBackendMode();
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -119,7 +122,10 @@ export default function App() {
   const flow = (k: number) => (si ? `${k.toFixed(3)} kg/s` : `${(k * KG_TO_LB).toFixed(3)} lb/s`);
   const press = (pa: number) => (si ? `${(pa / 1e5).toFixed(2)} bar` : `${(pa / PSI).toFixed(0)} psi`);
 
-  const solved = (design?.caches ?? []).filter((c) => c.status === "Solved").length;
+  // L6 is a reserved tier with no solver yet: it carries no payload, so it is
+  // shown as "reserved" and not counted as solved.
+  const isReserved = (c: { tier: string; payload?: unknown }) => c.tier === "L6" && c.payload == null;
+  const solved = (design?.caches ?? []).filter((c) => c.status === "Solved" && !isReserved(c)).length;
 
   return (
     <div className="qt-window">
@@ -229,7 +235,11 @@ export default function App() {
               {(design?.caches ?? []).map((c) => (
                 <div key={c.tier} className="qt-field">
                   <span>{c.tier}</span>
-                  <span className={`qt-badge ${c.status.toLowerCase()}`}>{c.status}</span>
+                  {isReserved(c) ? (
+                    <span className="qt-badge" title="reserved tier — no solver yet">Reserved</span>
+                  ) : (
+                    <span className={`qt-badge ${c.status.toLowerCase()}`} title={c.error ?? undefined}>{c.status}</span>
+                  )}
                 </div>
               ))}
             </fieldset>
@@ -245,6 +255,7 @@ export default function App() {
               </div>
             ))}
           </div>
+          <Suspense fallback={<div className="qt-tabpage"><p className="muted">Loading…</p></div>}>
 
           {tab === "design" && (
             <div className="qt-tabpage fill">
@@ -355,6 +366,7 @@ export default function App() {
               )}
             </div>
           )}
+          </Suspense>
         </div>
 
         {/* Right dock — properties */}
@@ -429,7 +441,9 @@ export default function App() {
                   ["Exit Mach", l2.exit_mach.toFixed(2)],
                   ["Exit dia.", len(l2.exit_diameter_m)],
                   ["Divergence λ", l2.divergence_correction.toFixed(3)],
-                  ["Isp (delivered, at ε)", `${l2.isp_s.toFixed(0)} s`],
+                  ...(l2.isp_vac_s ? [["Isp delivered, vacuum", `${l2.isp_vac_s.toFixed(0)} s`] as [string, string]] : []),
+                  ...(l2.isp_sl_s ? [["Isp delivered, sea level", `${l2.isp_sl_s.toFixed(0)} s`] as [string, string]] : []),
+                  [`Isp delivered, pₐ = ${(l2.exit_pressure_pa / 1e5).toFixed(2)} bar`, `${l2.isp_s.toFixed(0)} s`],
                 ]}
               />
             )}
@@ -458,6 +472,15 @@ export default function App() {
           </div>
         )}
         <div className="cell grow" />
+        {backend === "mock" && (
+          <div
+            className="cell"
+            style={{ color: "#fff", background: "#b7791f", fontWeight: 700 }}
+            title="The compute backend is unreachable, so results come from an approximate in-browser model, not the Rust solver. Start apro-engine-server (or the desktop app) for real numbers."
+          >
+            OFFLINE MOCK — approximate numbers
+          </div>
+        )}
         <div className="cell">{configured ? "design resolved" : "no design — enter requirements"}</div>
       </div>
     </div>

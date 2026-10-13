@@ -70,6 +70,18 @@ impl StressField {
     }
 }
 
+/// Governing margin under the primary/secondary split of pressure-vessel practice
+/// (ASME VIII-2 style): the primary pressure stress must stay below the allowable
+/// S, while the self-limiting through-wall thermal (secondary) stress is checked
+/// with it against the shakedown limit 2·S (the material allowables here are near
+/// yield, so 2·S stands in for 2·S_y). Thermal stress alone never ruptures a wall;
+/// it drives low-cycle fatigue, which this first-cut check does not model.
+pub fn stress_margin(primary_pa: f64, secondary_pa: f64, allowable_pa: f64) -> f64 {
+    let primary = allowable_pa / primary_pa.max(1.0);
+    let shakedown = 2.0 * allowable_pa / (primary_pa + secondary_pa).max(1.0);
+    primary.min(shakedown)
+}
+
 /// Evaluate the distributed stress field over a set of wall stations.
 pub fn solve_stress_field(stations: &[StressStationInput], mat: &StressMaterial) -> StressField {
     let mut out = Vec::with_capacity(stations.len());
@@ -86,7 +98,7 @@ pub fn solve_stress_field(stations: &[StressStationInput], mat: &StressMaterial)
         let dt = (s.wall_temp_hot_k - s.wall_temp_cold_k).max(0.0);
         let thermal = mat.youngs_modulus_pa * mat.alpha_per_k * dt / (2.0 * (1.0 - mat.poisson));
         let combined = hoop + thermal;
-        let margin = mat.allowable_stress_pa / combined.max(1.0);
+        let margin = stress_margin(hoop, thermal, mat.allowable_stress_pa);
 
         max_combined = max_combined.max(combined);
         min_margin = min_margin.min(margin);
@@ -103,6 +115,16 @@ pub fn solve_stress_field(stations: &[StressStationInput], mat: &StressMaterial)
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn thermal_stress_is_checked_against_shakedown_not_yield() {
+        // Pressure-only: margin = S / σ_hoop.
+        assert!((stress_margin(50e6, 0.0, 200e6) - 4.0).abs() < 1e-12);
+        // Thermal stress counts against 2·S together with the primary stress.
+        assert!((stress_margin(50e6, 250e6, 200e6) - 400.0 / 300.0).abs() < 1e-12);
+        // Primary stress above S fails however small the thermal part.
+        assert!(stress_margin(250e6, 0.0, 200e6) < 1.0);
+    }
+
     use super::*;
 
     fn mat() -> StressMaterial {

@@ -9,7 +9,7 @@
 
 use engine_core::{EngineDesign, PropellantPair};
 use propellants::props_for;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Options gathered from argv.
 struct Opts {
@@ -229,7 +229,7 @@ fn cmd_trade(_opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
 fn cmd_thrustcurve(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     let d = sizing_l0::krzycki_golden_design();
     let csv = export::thrust_curve_csv(&d, 3.0);
-    let path = if opts.out.as_os_str().is_empty() || opts.out == PathBuf::from("engine.apro-engine.ron") {
+    let path = if opts.out.as_os_str().is_empty() || opts.out == Path::new("engine.apro-engine.ron") {
         PathBuf::from("thrust_curve.csv")
     } else {
         opts.out.clone()
@@ -247,6 +247,8 @@ fn cmd_transient(_opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         chamber_pressure_pa: d.operating_point.chamber_pressure.as_si(),
         propellant_pair: d.propellant.pair,
         method: thermo::ThermoMethod::GibbsFreeEnergy,
+        fuel_temp_k: simulate::design::reactant_temps(&d).0,
+        ox_temp_k: simulate::design::reactant_temps(&d).1,
     })?;
     let pc = d.operating_point.chamber_pressure.as_si();
 
@@ -298,6 +300,8 @@ fn cmd_contour(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         chamber_pressure_pa: d.operating_point.chamber_pressure.as_si(),
         propellant_pair: d.propellant.pair,
         method: thermo::ThermoMethod::GibbsFreeEnergy,
+        fuel_temp_k: simulate::design::reactant_temps(&d).0,
+        ox_temp_k: simulate::design::reactant_temps(&d).1,
     })?;
     let input = gasdynamics::L2Input {
         gamma: l1.gamma,
@@ -311,10 +315,12 @@ fn cmd_contour(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         exit_half_angle_deg: 15.0,
         c_star_efficiency: d.operating_point.c_star_efficiency,
         nozzle_type: gasdynamics::NozzleType::Bell,
+        shifting_bonus: 1.0,
+        contraction_ratio: 0.0,
     };
     let l2 = gasdynamics::solve_l2(&input);
     let csv = export::contour_csv(&l2.stations);
-    let path = if opts.out.as_os_str().is_empty() || opts.out == PathBuf::from("engine.apro-engine.ron") {
+    let path = if opts.out.as_os_str().is_empty() || opts.out == Path::new("engine.apro-engine.ron") {
         PathBuf::from("contour.csv")
     } else {
         opts.out.clone()
@@ -373,6 +379,7 @@ fn cmd_turbopump(_opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         length_m: 0.35,
         youngs_modulus_pa: 200.0e9,
         lumped_mass_kg: 6.0,
+        min_critical_ratio: 1.25,
     });
     println!("Shaft: {}", shaft.summary());
 
@@ -520,7 +527,12 @@ fn cmd_cooling(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         wall_thickness_m: 0.0015,
         coolant_gap_m: 0.003,
         coolant_velocity_m_s: 20.0,
+        channel_count: 0.0,
+        channel_width_m: 0.0015,
+        channel_height_m: 0.003,
         coolant_pressure_pa: 5.0e6,
+        coolant: cooling::coolants::WATER,
+        coolant_mass_flow_kg_s: None,
         film_cooling: None,
         deposit_resistance_m2k_w: 0.0,
     };
@@ -580,7 +592,7 @@ fn cmd_cooling(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     println!("Ablative liner (carbon-phenolic): {}", abl.summary());
 
     // Heat-flux CSV for FEM boundary conditions.
-    let path = if opts.out.as_os_str().is_empty() || opts.out == PathBuf::from("engine.apro-engine.ron") {
+    let path = if opts.out.as_os_str().is_empty() || opts.out == Path::new("engine.apro-engine.ron") {
         PathBuf::from("heat_flux.csv")
     } else {
         opts.out.clone()
@@ -619,7 +631,7 @@ fn cmd_safety(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     print!("{}", export::safety_checklist(&d));
 
     let svg = export::pid_svg(&d);
-    let path = if opts.out.as_os_str().is_empty() || opts.out == PathBuf::from("engine.apro-engine.ron") {
+    let path = if opts.out.as_os_str().is_empty() || opts.out == Path::new("engine.apro-engine.ron") {
         PathBuf::from("pid.svg")
     } else {
         opts.out.clone()

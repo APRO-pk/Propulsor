@@ -75,6 +75,12 @@ pub fn resolve(design: &mut EngineDesign) -> Result<(), EngineError> {
         design.caches.clear();
         return Ok(());
     }
+    // Drop any cache whose recorded inputs no longer match the design (e.g. a
+    // project file edited by hand or saved by an older build) so it re-solves.
+    let current: Vec<(Tier, u64)> = Tier::ALL.iter().map(|&t| (t, finger_print(design, t))).collect();
+    design
+        .caches
+        .retain(|c| current.iter().any(|&(t, h)| t == c.tier && h == c.inputs_hash));
     for tier in Tier::ALL {
         if design.caches.iter().any(|c| c.tier == tier) {
             continue;
@@ -150,8 +156,31 @@ pub fn resolve(design: &mut EngineDesign) -> Result<(), EngineError> {
     Ok(())
 }
 
-fn finger_print(_design: &EngineDesign, _tier: Tier) -> u64 {
-    0u64
+/// Fingerprint of everything a tier's solve reads: the requirements, geometry,
+/// materials and the tier-feeding params/choices (lower-tier results follow
+/// deterministically from these). Masked to 53 bits so it survives a JSON
+/// round-trip through the frontend. (A toolchain change may alter the hash; that
+/// only costs one re-solve on load.)
+fn finger_print(design: &EngineDesign, tier: Tier) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let tier_params: Vec<(&String, String)> = design
+        .params
+        .iter()
+        .map(|(k, v)| (k, v.to_bits().to_string()))
+        .chain(design.choices.iter().map(|(k, v)| (k, v.clone())))
+        .filter(|(k, _)| engine_core::design::tier_root_for_param(k).is_some())
+        .collect();
+    let inputs = serde_json::json!({
+        "tier": tier,
+        "propellant": design.propellant,
+        "operating_point": design.operating_point,
+        "geometry": design.geometry,
+        "materials": design.materials,
+        "params": tier_params,
+    });
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    inputs.to_string().hash(&mut h);
+    h.finish() & ((1u64 << 53) - 1)
 }
 
 /// L0 assumptions for a design: the characteristic chamber length L* comes from
@@ -163,8 +192,17 @@ fn l0_assumptions(design: &EngineDesign) -> sizing_l0::L0Assumptions {
         .as_ref()
         .and_then(|c| c.l_star_m)
         .unwrap_or_else(|| sizing_l0::recommended_l_star(design.propellant.pair));
+    // Pressure shell: the selected chamber material's allowable with a design
+    // safety factor (Krzycki's 8000 psi copper at SF 1.0 is "before margin"; the
+    // golden test keeps that, the app applies the margin here).
+    let mat = design::resolve_material(
+        design,
+        &design.materials.chamber.clone().unwrap_or_else(|| "OFHC Copper".into()),
+    );
     sizing_l0::L0Assumptions {
         l_star_m: l_star,
+        allowable_stress: engine_core::Pressure::si(mat.allowable_stress_pa),
+        wall_safety_factor: design.param("structures.wall_safety_factor", 1.5).clamp(1.0, 5.0),
         ..sizing_l0::L0Assumptions::default()
     }
 }
@@ -337,8 +375,10 @@ fn l4_input(design: &EngineDesign) -> Result<structures::L4Input, EngineError> {
     let l0: sizing_l0::L0Result = payload(design, Tier::L0)?;
     let l3: cooling::CoolingResult = payload(design, Tier::L3)?;
 
-    let wall_temp = l3.max_wall_temp_k;
-    let thermal_gradient = (wall_temp - 350.0).max(0.0);
+    // Through-wall (hot-wall − coolant-side-wall) drop from L3 — not hot wall minus
+    // ambient, which overstates the thermal stress several-fold — and only for
+    // actively cooled walls.
+    let thermal_gradient = if design::actively_cooled(design) { design::max_wall_dt_k(&l3) } else { 0.0 };
 
     // Structural properties from the selected chamber material (not copper-pinned;
     // honors a user-defined "Custom" material too).
@@ -728,6 +768,39 @@ mod tests {
         assert_eq!(l3.status, SolveStatus::Failed);
         assert!(l3.error.as_deref().unwrap_or("").contains("gaseous"));
         assert!(d.caches.iter().find(|c| c.tier == Tier::L2).unwrap().status == SolveStatus::Solved);
+    }
+
+    #[test]
+    fn l4_thermal_stress_uses_the_through_wall_drop() {
+        // Regression: L4 used (hot wall − 350 K) as the through-wall gradient,
+        // giving GPa-level thermal stress on every regen design.
+        let mut d = EngineDesign::new("test", "ci");
+        resolve(&mut d).unwrap();
+        let l3: cooling::CoolingResult = payload(&d, Tier::L3).unwrap();
+        let l4: structures::StructuresResult = payload(&d, Tier::L4).unwrap();
+        let dt = design::max_wall_dt_k(&l3);
+        assert!(dt > 0.0 && dt < l3.max_wall_temp_k - 300.0, "through-wall ΔT {dt}");
+        let mat = design::resolve_material(&d, &d.materials.chamber.clone().unwrap_or_else(|| "OFHC Copper".into()));
+        let expected = mat.youngs_modulus_pa * mat.cte_per_k * dt / (2.0 * (1.0 - 0.33));
+        assert!((l4.thermal_stress_pa - expected).abs() < 1e-6 * expected);
+    }
+
+    #[test]
+    fn stale_caches_are_detected_by_fingerprint() {
+        let mut d = EngineDesign::new("test", "ci");
+        resolve(&mut d).unwrap();
+        assert!(d.caches.iter().all(|c| c.inputs_hash == finger_print(&d, c.tier) && c.inputs_hash != 0));
+        // Change an input behind apply_field's back (as a hand-edited project
+        // file would): resolve must notice and re-solve rather than reuse caches.
+        let before: sizing_l0::L0Result = payload(&d, Tier::L0).unwrap();
+        d.operating_point.thrust = engine_core::Force::si(2.0 * d.operating_point.thrust.as_si());
+        resolve(&mut d).unwrap();
+        let after: sizing_l0::L0Result = payload(&d, Tier::L0).unwrap();
+        assert!(after.total_flow.as_si() > 1.9 * before.total_flow.as_si());
+        // A study-only param leaves the tier fingerprints untouched.
+        let h = finger_print(&d, Tier::L3);
+        d.apply_field("blade.pump_blade_count", engine_core::FieldValue::Num(7.0)).unwrap();
+        assert_eq!(h, finger_print(&d, Tier::L3));
     }
 
     #[test]

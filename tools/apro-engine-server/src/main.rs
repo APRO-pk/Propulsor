@@ -11,7 +11,7 @@
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -50,7 +50,7 @@ fn main() {
     }
 }
 
-fn handle(mut stream: TcpStream, web_root: &PathBuf, state: &DesignState) {
+fn handle(mut stream: TcpStream, web_root: &Path, state: &DesignState) {
     let (method, path, body) = match read_request(&mut stream) {
         Some(r) => r,
         None => return,
@@ -235,7 +235,7 @@ fn respond_json(stream: &mut TcpStream, value: serde_json::Value) {
     let _ = stream.write_all(body.as_bytes());
 }
 
-fn serve_static(stream: &mut TcpStream, web_root: &PathBuf, path: &str) {
+fn serve_static(stream: &mut TcpStream, web_root: &Path, path: &str) {
     let rel = path.trim_start_matches('/');
     let rel = if rel.is_empty() { "index.html" } else { rel };
     let mut file_path = web_root.join(rel);
@@ -265,7 +265,7 @@ fn serve_static(stream: &mut TcpStream, web_root: &PathBuf, path: &str) {
     }
 }
 
-fn mime_for(path: &PathBuf) -> &'static str {
+fn mime_for(path: &Path) -> &'static str {
     match path.extension().and_then(|e| e.to_str()) {
         Some("html") => "text/html; charset=utf-8",
         Some("js") => "text/javascript",
