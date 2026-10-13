@@ -93,6 +93,12 @@ export function Analysis() {
   );
 }
 
+/** The atomization (SMD) correlation behind the ERE is not yet from a published
+ *  source and over-predicts droplet size ~10×, so the derived c* efficiency is far
+ *  too low (~65–75%). Applying it is disabled until that is replaced; flip this
+ *  once the correlation is sourced. */
+const ERE_CALIBRATED = false;
+
 /** Computed combustion (c*) efficiency — ERE from residence time / vaporization / mixing. */
 function ErePanel({ ere }: { ere: EreResultDto }) {
   const apply = useEngineStore((s) => s.apply);
@@ -134,10 +140,17 @@ function ErePanel({ ere }: { ere: EreResultDto }) {
           <button
             className="qt-tool"
             style={{ marginTop: 10 }}
+            disabled={!ERE_CALIBRATED}
+            title={ERE_CALIBRATED ? undefined : "Disabled: the atomization model is uncalibrated and under-predicts c* efficiency"}
             onClick={() => { void apply("c_star_efficiency", +ere.c_star_efficiency.toFixed(4)); setApplied(true); }}
           >
             Apply derived c* efficiency to design
           </button>
+          {!ERE_CALIBRATED && (
+            <p className="muted" style={{ margin: "6px 0 0" }}>
+              Uncalibrated: the spray droplet-size model is not yet from a published correlation and over-predicts drop size, so this ERE reads far below real engines (~95–99%). Shown for reference only; the design keeps its own c* efficiency.
+            </p>
+          )}
           {applied && <span className="qt-badge solved" style={{ marginLeft: 8 }}>applied → Isp re-resolved</span>}
         </div>
       </div>

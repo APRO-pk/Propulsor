@@ -123,6 +123,13 @@ body {
 .qt-tool:active {
   background: linear-gradient(#dfe2e7, #eceef1);
 }
+.qt-tool:disabled,
+.qt-tool:disabled:hover {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: linear-gradient(var(--qt-btn-top), var(--qt-btn-bottom));
+  border-color: var(--qt-border);
+}
 .qt-tool.on {
   background: linear-gradient(#dce8fb, #cadcf6);
   border-color: var(--qt-highlight-border);
