@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "apro-engine-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cooling",
  "engine-core",
@@ -22,7 +22,7 @@ dependencies = [
 
 [[package]]
 name = "apro-engine-server"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "engine-core",
  "serde_json",
@@ -47,7 +47,7 @@ dependencies = [
 
 [[package]]
 name = "cooling"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "engine-core",
  "gasdynamics",
@@ -58,7 +58,7 @@ dependencies = [
 
 [[package]]
 name = "engine-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "log",
  "ron",
@@ -69,7 +69,7 @@ dependencies = [
 
 [[package]]
 name = "export"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "engine-core",
  "gasdynamics",
@@ -81,7 +81,7 @@ dependencies = [
 
 [[package]]
 name = "feedsystem"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "engine-core",
  "propellants",
@@ -90,7 +90,7 @@ dependencies = [
 
 [[package]]
 name = "gasdynamics"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "engine-core",
  "serde",
@@ -99,7 +99,7 @@ dependencies = [
 
 [[package]]
 name = "injector"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "engine-core",
  "serde",
@@ -134,7 +134,7 @@ dependencies = [
 
 [[package]]
 name = "propellants"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "engine-core",
  "serde",
@@ -206,7 +206,7 @@ dependencies = [
 
 [[package]]
 name = "simulate"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cooling",
  "engine-core",
@@ -224,7 +224,7 @@ dependencies = [
 
 [[package]]
 name = "sizing-l0"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "engine-core",
  "propellants",
@@ -233,7 +233,7 @@ dependencies = [
 
 [[package]]
 name = "structures"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "engine-core",
  "serde",
@@ -253,7 +253,7 @@ dependencies = [
 
 [[package]]
 name = "thermo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "engine-core",
  "propellants",
@@ -282,7 +282,7 @@ dependencies = [
 
 [[package]]
 name = "turbopumps"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
 ]
