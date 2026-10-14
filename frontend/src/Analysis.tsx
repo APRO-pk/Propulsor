@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useSharedState } from "./sharedState";
+import { Ico } from "./Icons";
 import { analysisStudy, type AnalysisStudyDto, type EreResultDto } from "./api";
 import { useEngineStore } from "./store";
 import { ParamField, ParamChoice, ResetParams } from "./ParamInput";
@@ -19,8 +21,8 @@ export function Analysis() {
   const dflt = a.injector_defaults;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-      <fieldset className="qt-groupbox" style={{ gridColumn: "1 / 3" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 12 }}>
+      <fieldset className="qt-groupbox" style={{ gridColumn: "1 / -1" }}>
         <legend>Injector design inputs<span style={{ float: "right" }}><ResetParams prefix="injector." /></span></legend>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "0 16px" }}>
           <ParamChoice label="Element type" k="injector.element_type" def="Triplet" options={["Triplet", "UnlikeDoublet", "LikeDoublet", "Pintle", "Coaxial"]} hint="Drop-size data (TR R-67 Fig. 27) exist for triplets and like doublets; other types are mapped to the nearest line and flagged" />
@@ -52,7 +54,7 @@ export function Analysis() {
         </table>
         <div className="qt-field"><span>Injector ΔP</span><b>{(a.injector.pressure_drop_pa / 1000).toFixed(0)} kPa</b></div>
         <div className="qt-field"><span>Momentum ratio (ox/fuel)</span><b>{a.injector.momentum_ratio.toFixed(2)}</b></div>
-        {a.injector.flags.map((f, i) => <p key={i} className="err">⚠ {f}</p>)}
+        {a.injector.flags.map((f, i) => <p key={i} className="err flag"><Ico name="warn" size={15} />{f}</p>)}
       </fieldset>
 
       <fieldset className="qt-groupbox">
@@ -72,10 +74,10 @@ export function Analysis() {
           <span>n–τ stability</span>
           <span className={`qt-badge ${a.instability.stable ? "solved" : "failed"}`}>margin {a.instability.stability_margin.toFixed(2)} · {a.instability.stable ? "STABLE" : "UNSTABLE"}</span>
         </div>
-        {a.instability.notes.map((n, i) => <p key={i} className="muted">• {n}</p>)}
+        <ul className="notes">{a.instability.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
       </fieldset>
 
-      <fieldset className="qt-groupbox" style={{ gridColumn: "1 / 3" }}>
+      <fieldset className="qt-groupbox" style={{ gridColumn: "1 / -1" }}>
         <legend>Distributed wall stress (FEM-like)</legend>
         <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
           <div className="qt-field" style={{ minWidth: 220 }}>
@@ -106,30 +108,30 @@ function ErePanel({ ere }: { ere: EreResultDto }) {
   const apply = useEngineStore((s) => s.apply);
   const design = useEngineStore((s) => s.design);
   const current = design?.operating_point.c_star_efficiency ?? 0.95;
-  const [applied, setApplied] = useState(false);
+  const [applied, setApplied] = useSharedState("analysis.applied", false);
   const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
   const bars: [string, number, string][] = [
-    ["Vaporization η_vap (Priem–Heidmann)", ere.vaporization_efficiency, "#3574e0"],
-    ["Mixing η_mix (input)", ere.mixing_efficiency, "#2f8f46"],
+    ["Vaporization η_vap (Priem–Heidmann)", ere.vaporization_efficiency, "var(--cyan)"],
+    ["Mixing η_mix (input)", ere.mixing_efficiency, "var(--ok)"],
   ];
   const sides = [ere.ox, ere.fuel];
   return (
-    <fieldset className="qt-groupbox" style={{ gridColumn: "1 / 3" }}>
+    <fieldset className="qt-groupbox" style={{ gridColumn: "1 / -1" }}>
       <legend>Computed combustion efficiency — ERE (energy release)</legend>
       {!ere.applicable ? (
         <>
-          {ere.flags.map((f, i) => <p key={i} className="err">⚠ {f}</p>)}
+          {ere.flags.map((f, i) => <p key={i} className="err flag"><Ico name="warn" size={15} />{f}</p>)}
           <p className="muted">Set the design c* efficiency directly for this propellant pair (current {pct(current)}).</p>
         </>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 18 }}>
           <div>
             {bars.map(([label, v, color]) => (
               <div key={label} style={{ margin: "6px 0" }}>
                 <div className="qt-caption" style={{ display: "flex", justifyContent: "space-between", margin: 0 }}>
                   <span>{label}</span><span>{pct(v)}</span>
                 </div>
-                <div style={{ height: 9, background: "#eceef1", borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ height: 9, background: "var(--bg-3)", borderRadius: 3, overflow: "hidden" }}>
                   <div style={{ width: `${Math.max(0, (v - 0.5) / 0.5) * 100}%`, height: "100%", background: color }} />
                 </div>
               </div>
@@ -147,7 +149,7 @@ function ErePanel({ ere }: { ere: EreResultDto }) {
               fraction vaporized (Priem &amp; Heidmann NASA TR R-67, via CR-168066); only vaporized propellant burns, at the
               vaporized mixture ratio. Validated against Pavli NASA TM-79319 LOX/RP-1 data.
             </p>
-            {ere.flags.map((f, i) => <p key={i} className="err">⚠ {f}</p>)}
+            {ere.flags.map((f, i) => <p key={i} className="err flag"><Ico name="warn" size={15} />{f}</p>)}
           </div>
           <div>
             <table className="qt-proptable">

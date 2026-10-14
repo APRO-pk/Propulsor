@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Propulsor — Design Criteria Monograph</title>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=STIX+Two+Text:ital@1&display=swap" rel="stylesheet">
+<style>
+:root{--buff:#e4d3a8;--buff-2:#d8c48f;--bond:#f7f7f4;--sheet:#fff;--ink:#15181c;--ink-2:#4a4f57;--rule:#15181c;--hair:#cfccc2;--spot:#1f5a96;--fail:#b3261e;--warn:#7a5200;--warn-bg:#fbefd2;--pass:#1f6b3a}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;font:13px/1.4 "Public Sans",sans-serif;color:var(--ink);background:var(--bond);display:grid;grid-template:1fr 26px/264px 1fr 316px;font-variant-numeric:tabular-nums}
+i.m{font:italic 15px "STIX Two Text",serif}
+.rail{grid-row:1;background:var(--buff);border-right:1px solid var(--rule);display:flex;flex-direction:column}
+.ident{padding:16px 18px 12px;border-bottom:1px solid var(--rule)}
+.ident .k{font-size:10.5px;font-weight:700;letter-spacing:.14em}
+.ident h1{font-size:19px;font-weight:700;margin-top:6px;letter-spacing:-.01em}
+.ident .s{font-size:12px;color:var(--ink-2);margin-top:2px}
+.fig{padding:10px 18px 8px;border-bottom:1px solid var(--rule)}
+.fig .cap{font-size:10.5px;color:var(--ink-2);margin-top:4px}
+nav{padding:10px 0;flex:1}
+nav .h{display:flex;gap:10px;padding:7px 18px 3px;font-weight:700;font-size:12.5px}
+nav .h b{width:22px}
+nav a{display:flex;gap:10px;padding:4px 18px 4px 40px;color:var(--ink);text-decoration:none;font-size:12.5px}
+nav a b{font-weight:500;width:26px;color:var(--ink-2)}
+nav a.on{background:var(--sheet);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);margin-right:-1px;font-weight:700;box-shadow:inset 3px 0 var(--spot)}
+nav a.on b{color:var(--spot);font-weight:700}
+main{grid-row:1;display:flex;flex-direction:column;min-width:0}
+.head{display:flex;align-items:flex-end;gap:16px;padding:14px 24px 10px;border-bottom:2px solid var(--rule);background:var(--sheet)}
+.head .no{font-size:30px;font-weight:700;color:var(--spot);line-height:1}
+.head h2{font-size:22px;font-weight:700;line-height:1.05}
+.head .run{margin-left:auto;text-align:right;font-size:11.5px;color:var(--ink-2)}
+.cmd{display:flex;gap:0;margin-top:6px;justify-content:flex-end}
+.cmd span{border:1px solid var(--rule);margin-left:-1px;padding:3px 10px;font-size:12px;color:var(--ink);background:var(--sheet)}
+.cmd span.p{background:var(--ink);color:#fff}
+.page{padding:18px 24px;overflow:hidden;display:grid;grid-template-columns:1fr 1fr;gap:18px 28px;align-content:start}
+.sec h3{font-size:13px;font-weight:700;border-bottom:1px solid var(--rule);padding-bottom:4px;margin-bottom:6px;display:flex;gap:10px}
+.sec h3 b{color:var(--spot)}
+.row{display:grid;grid-template-columns:1fr 118px 52px;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid var(--hair)}
+.row label{color:var(--ink-2)}
+.in{border:1px solid var(--ink-2);background:var(--sheet);padding:3px 7px;text-align:right}
+.u{font-size:12px;color:var(--ink-2)}
+.custom{color:var(--spot);font-weight:700}
+.figure{grid-column:1/-1;border:1px solid var(--rule);background:var(--sheet);padding:12px 14px 8px}
+.figure svg{display:block}
+.figure .cap{font-size:12px;margin-top:6px}.figure .cap b{font-weight:700}
+table{width:100%;border-collapse:collapse}
+td,th{padding:3px 6px;border-bottom:1px solid var(--hair);text-align:right}
+th{font-weight:600;color:var(--ink-2);border-bottom:1px solid var(--rule);font-size:11.5px}
+td:first-child,th:first-child{text-align:left}
+aside{grid-row:1;background:var(--sheet);border-left:1px solid var(--rule);display:flex;flex-direction:column}
+aside .t{padding:12px 16px 8px;font-size:10.5px;font-weight:700;letter-spacing:.14em;border-bottom:1px solid var(--rule)}
+.iss{padding:8px 16px 10px;border-bottom:1px solid var(--rule)}
+.iss p{display:grid;grid-template-columns:62px 1fr;gap:8px;padding:4px 0;font-size:12px}
+.tag{font-size:10.5px;font-weight:700;letter-spacing:.06em;padding:1px 4px;border:1px solid currentColor;text-align:center;height:max-content}
+.fail{color:var(--fail)}.warn{color:var(--warn);background:var(--warn-bg)}
+.nom{padding:6px 16px}
+.nom .g{font-size:11px;font-weight:700;letter-spacing:.1em;margin:10px 0 2px;color:var(--ink-2)}
+.nom p{display:grid;grid-template-columns:30px 1fr auto 26px;gap:8px;align-items:baseline;padding:3px 0;border-bottom:1px solid var(--hair);font-size:12px}
+.nom p span:nth-child(2){color:var(--ink-2)}
+.nom p strong{font-weight:600}
+.cite{font-size:10px;color:var(--spot);font-weight:700}
+footer{grid-column:1/-1;background:var(--ink);color:#e9e7e0;display:flex;font-size:11.5px}
+footer span{padding:5px 14px;border-right:1px solid #3a3f46}
+footer .f{background:var(--fail);color:#fff;font-weight:700}
+footer .w{color:#f3c86b}
+footer .g{flex:1;border:0}
+</style></head><body>
+<div class="rail">
+  <div class="ident"><div class="k">PROPULSOR</div><h1>LOX/CH₄ · 25 kN</h1><div class="s">untitled · Rev 24 · 60 bar · O/F 3.4</div></div>
+  <div class="fig">
+    <svg width="228" height="78" viewBox="0 0 228 78"><path d="M4 39h220" stroke="#15181c" stroke-width=".6" stroke-dasharray="6 3"/>
+      <path d="M8 14H88C104 14 112 33 124 33C136 33 156 22 222 6" fill="none" stroke="#15181c" stroke-width="1.2"/>
+      <path d="M8 64H88C104 64 112 45 124 45C136 45 156 56 222 72" fill="none" stroke="#15181c" stroke-width="1.2"/>
+      <path d="M8 12H88C104 12 112 31 124 31C136 31 156 20 222 4M8 66H88C104 66 112 47 124 47C136 47 156 58 222 74" fill="none" stroke="#1f5a96" stroke-width="3"/>
+      <path d="M8 14V64" stroke="#15181c"/></svg>
+    <div class="cap">Fig. 0 — Thrust chamber, ε 3.65 · cooled wall lit</div>
+  </div>
+  <nav>
+    <div class="h"><b>1</b>Requirements</div>
+    <div class="h"><b>2</b>Performance</div><a><b>2.1</b>Summary</a><a><b>2.2</b>Performance map</a><a><b>2.3</b>Trade studies</a>
+    <div class="h"><b>3</b>Geometry</div><a><b>3.1</b>Engine model</a><a><b>3.2</b>Cross-section</a><a><b>3.3</b>Vehicle assembly</a>
+    <div class="h"><b>4</b>Thermal &amp; structural</div><a class="on"><b>4.1</b>Cooling</a><a><b>4.2</b>Injector &amp; stress</a>
+    <div class="h"><b>5</b>Turbomachinery</div><a><b>5.1</b>Turbopumps</a><a><b>5.2</b>Blades</a>
+    <div class="h"><b>6</b>Feed &amp; control</div><a><b>6.1</b>Feed system</a><a><b>6.2</b>Control</a>
+    <div class="h"><b>7</b>Verification</div><a><b>7.1</b>Validation</a>
+  </nav>
+</div>
+<main>
+  <div class="head"><span class="no">4.1</span><h2>Cooling</h2>
+    <div class="run">L3 Cooling · Solved · re-solved 0.4 s ago
+      <div class="cmd"><span>Undo</span><span>Redo</span><span class="p">Solve</span><span>SI ▾</span><span>Export ▾</span></div></div></div>
+  <div class="page">
+    <div class="sec"><h3><b>4.1.1</b>Wall &amp; method</h3>
+      <div class="row"><label>Cooling method</label><span class="in" style="text-align:left">Regenerative ▾</span><span></span></div>
+      <div class="row"><label>Chamber wall material</label><span class="in" style="text-align:left">CuCrZr ▾</span><span></span></div>
+      <div class="row"><label>Wall thickness</label><span class="in">1.20</span><span class="u">mm</span></div>
+      <div class="row"><label>Max wall temperature</label><strong style="text-align:right">812 K</strong><span class="u">/ 900</span></div></div>
+    <div class="sec"><h3><b>4.1.2</b>Coolant channels <span class="custom" style="margin-left:auto;font-size:11px">● 3 custom</span></h3>
+      <div class="row"><label>Channel count</label><span class="in">80</span><span class="u">—</span></div>
+      <div class="row"><label>Channel width</label><span class="in">0.80</span><span class="u">mm</span></div>
+      <div class="row"><label>Channel height</label><span class="in">1.50</span><span class="u">mm</span></div>
+      <div class="row"><label>Coolant pressure factor</label><span class="in">2.00</span><span class="u">× Pc</span></div></div>
+    <div class="figure">
+      <svg width="100%" height="190" viewBox="0 0 860 190" preserveAspectRatio="none">
+        <g stroke="#cfccc2" stroke-width="1"><path d="M40 20H850M40 60H850M40 100H850M40 140H850"/></g>
+        <path d="M40 170H850M40 10V170" stroke="#15181c"/>
+        <path d="M40 120C200 116 330 104 420 60C470 34 500 30 540 52C640 104 760 132 850 140" fill="none" stroke="#1f5a96" stroke-width="2"/>
+        <path d="M40 46H850" stroke="#b3261e" stroke-dasharray="5 4"/><text x="760" y="40" font-size="11" fill="#b3261e">limit 900 K</text>
+        <g font-size="10.5" fill="#4a4f57"><text x="8" y="24">900</text><text x="8" y="104">700</text><text x="8" y="168">500</text><text x="408" y="186">throat</text></g>
+      </svg>
+      <div class="cap"><b>Figure 4.1-1</b> Hot-gas-side wall temperature along the axis, regenerative CuCrZr, 80 channels. Peak 812 K at x = −4 mm.</div></div>
+    <div class="sec" style="grid-column:1/-1"><h3><b>4.1.3</b>Station results</h3>
+      <table><tr><th>Station</th><th>x, mm</th><th>q, MW/m²</th><th>T_wg, K</th><th>T_c, K</th><th>Δp, bar</th><th>Margin</th></tr>
+      <tr><td>Injector face</td><td>−182.0</td><td>6.1</td><td>604</td><td>131</td><td>0.0</td><td>1.49</td></tr>
+      <tr><td>Chamber</td><td>−90.0</td><td>9.8</td><td>701</td><td>148</td><td>1.8</td><td>1.28</td></tr>
+      <tr><td>Throat</td><td>0.0</td><td>31.4</td><td>812</td><td>171</td><td>6.2</td><td>1.11</td></tr></table></div>
+  </div>
+</main>
+<aside>
+  <div class="t">ISSUES</div>
+  <div class="iss"><p><span class="tag fail">FAIL</span><span>4.2 Structural margin 0.26 below 1.0 (peak σ 770 MPa)</span></p>
+    <p><span class="tag warn">ADVISE</span><span>5.1 Shaft runs supercritical (N_cr 2010 rpm)</span></p>
+    <p><span class="tag warn">ADVISE</span><span>6.2 Pc loop 20 Hz exceeds 1/10 of 50 Hz sampling</span></p></div>
+  <div class="t">NOMENCLATURE</div>
+  <div class="nom"><div class="g">L0 · ANALYTICAL SIZING</div>
+    <p><i class="m">ṁ</i><span>total flow</span><strong>8.791 kg/s</strong><span class="cite">L0</span></p>
+    <p><i class="m">D<sub>t</sub></i><span>throat diameter</span><strong>56.0 mm</strong><span class="cite">L0</span></p>
+    <p><i class="m">D<sub>e</sub></i><span>exit diameter</span><strong>107.0 mm</strong><span class="cite">L0</span></p>
+    <p><i class="m">t<sub>w</sub></i><span>wall thickness</span><strong>6.1 mm</strong><span class="cite">L0</span></p>
+    <div class="g">L1 · THERMOCHEMISTRY</div>
+    <p><i class="m">T<sub>c</sub></i><span>chamber temperature</span><strong>3599 K</strong><span class="cite">L1</span></p>
+    <p><i class="m">γ</i><span>specific heat ratio</span><strong>1.201</strong><span class="cite">L1</span></p>
+    <p><i class="m">c*</i><span>char. velocity, eq.</span><strong>1827 m/s</strong><span class="cite">L1</span></p>
+    <div class="g">L2 · NOZZLE</div>
+    <p><i class="m">ε</i><span>area ratio</span><strong>3.65</strong><span class="cite">L2</span></p>
+    <p><i class="m">M<sub>e</sub></i><span>exit Mach</span><strong>2.41</strong><span class="cite">L2</span></p>
+    <p><i class="m">I<sub>sp</sub></i><span>delivered, sea level</span><strong>271 s</strong><span class="cite">L2</span></p></div>
+</aside>
+<footer><span><b>untitled</b></span><span>Rev 24</span><span>L0–L5 solved · L6 reserved</span><span class="f">1 failed</span><span class="w">3 advisories</span><span class="g"></span><span>SI</span><span>Rust solver</span></footer>
+</body></html>

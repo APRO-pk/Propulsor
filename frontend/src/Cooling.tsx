@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
+import { SCENE } from "./theme";
 import { coolingStudy, pairCoolantNames, DEFAULT_JACKET_PRESSURE_FACTOR, DEFAULT_LINER_THICKNESS_MM, type CoolingStudyDto, type PrintPlanDto } from "./api";
 import { useEngineStore } from "./store";
 import { ParamField, ParamChoice, ResetParams } from "./ParamInput";
@@ -73,7 +74,7 @@ export function Cooling() {
   const dpBudget = study ? study.regen.coolant.inlet_pressure_pa - pcBar * 1e5 * 1.2 : 0;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 12 }}>
       <fieldset className="qt-groupbox">
         <legend>Cooling strategy</legend>
         <label className="qt-field">
@@ -97,7 +98,7 @@ export function Cooling() {
           </select>
         </label>
         {material === "Custom" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px", borderTop: "1px solid var(--qt-border)", borderBottom: "1px solid var(--qt-border)", padding: "4px 0", margin: "4px 0" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: "0 12px", borderTop: "1px solid var(--qt-border)", borderBottom: "1px solid var(--qt-border)", padding: "4px 0", margin: "4px 0" }}>
             <ParamField label="Conductivity k" k="material.custom_k" def={350} step={10} unit="W/m·K" />
             <ParamField label="Max service temp" k="material.custom_tmax_k" def={800} step={25} dim="temperature" baseUnit="K" />
             <ParamField label="Density" k="material.custom_density" def={8000} step={100} unit="kg/m³" />
@@ -217,9 +218,9 @@ export function Cooling() {
       </fieldset>
 
       {(method === "film" || method === "ablative" || method === "radiation") && (
-        <fieldset className="qt-groupbox" style={{ gridColumn: "1 / 3" }}>
+        <fieldset className="qt-groupbox" style={{ gridColumn: "1 / -1" }}>
           <legend>{METHODS.find((m) => m.id === method)?.label} detail inputs<span style={{ float: "right" }}><ResetParams prefix="cooling." /></span></legend>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "0 16px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: "0 16px" }}>
             {method === "film" && <>
               <ParamField label="Film fraction" k="cooling.film_fraction" def={0} step={0.01} hint="fraction of total flow bled as film coolant; >0 sets the film velocity (0 = use velocity below)" />
               <ParamField label="Coolant temperature" k="cooling.film_coolant_temp_k" def={400} step={25} dim="temperature" baseUnit="K" />
@@ -278,7 +279,7 @@ export function Cooling() {
         )}
       </fieldset>
 
-      <fieldset className="qt-groupbox" style={{ gridColumn: "1 / 3" }}>
+      <fieldset className="qt-groupbox" style={{ gridColumn: "1 / -1" }}>
         <legend>Material database</legend>
         <table className="qt-proptable">
           <thead>
@@ -305,11 +306,11 @@ export function Cooling() {
       </fieldset>
 
       {study && (
-        <fieldset className="qt-groupbox" style={{ gridColumn: "1 / 3" }}>
+        <fieldset className="qt-groupbox" style={{ gridColumn: "1 / -1" }}>
           <legend>Additive-manufacturing build plan (multi-material / graded)</legend>
           <div className="qt-field"><span>Plan</span><span className="qt-badge solved">{study.print_plan.summary}</span></div>
           <div className="qt-field"><span>Build direction</span><b>{study.print_plan.build_direction}</b></div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, alignItems: "start", marginTop: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 14, alignItems: "start", marginTop: 8 }}>
             <div className="viewer3d" style={{ height: 320, borderRadius: 5, overflow: "hidden" }}>
               <PrintPlan3D
                 plan={study.print_plan}
@@ -324,7 +325,7 @@ export function Cooling() {
                 <tbody>
                   {study.print_plan.regions.map((r) => (
                     <tr key={r.name}>
-                      <td><span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: materialColor(r.material), marginRight: 6 }} />{r.name}{r.high_precision ? " ★" : ""}</td>
+                      <td><span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: materialColor(r.material), marginRight: 6 }} />{r.name}{r.high_precision ? <span className="precision-mark" role="img" aria-label="precision region" title="precision region" /> : null}</td>
                       <td>{r.material}</td>
                       <td className="val">{r.process}</td>
                       <td className="val">{r.layer_thickness_um > 0 ? `${r.layer_thickness_um.toFixed(0)} µm` : "—"}</td>
@@ -333,7 +334,7 @@ export function Cooling() {
                   ))}
                 </tbody>
               </table>
-              <p className="qt-caption" style={{ marginTop: 4 }}>★ precision region — finer layer height &amp; hatch, contour compensation.</p>
+              <p className="qt-caption" style={{ marginTop: 4 }}><span className="precision-mark" aria-hidden="true" /> precision region — finer layer height &amp; hatch, contour compensation.</p>
             </div>
           </div>
 
@@ -398,11 +399,11 @@ function PrintPlan3D({ plan, throatR, chamberR, stations }: { plan: PrintPlanDto
   const cam = span * 1.7;
 
   return (
-    <Canvas dpr={[1, 2]} camera={{ position: [cam * 0.7, cam * 0.5, cam], fov: 42, near: 0.001, far: 100 }}>
-      <color attach="background" args={["#3b4046"]} />
-      <hemisphereLight args={["#ffffff", "#33383e", 1.0]} />
+    <Canvas frameloop="demand" dpr={[1, 2]} camera={{ position: [cam * 0.7, cam * 0.5, cam], fov: 42, near: 0.001, far: 100 }}>
+      <color attach="background" args={[SCENE.background]} />
+      <hemisphereLight args={[SCENE.sky, SCENE.ground, 1.0]} />
       <directionalLight position={[cam, cam * 1.4, cam]} intensity={2.0} />
-      <directionalLight position={[-cam, cam * 0.4, -cam]} intensity={0.6} color="#a9c0dd" />
+      <directionalLight position={[-cam, cam * 0.4, -cam]} intensity={0.6} color={SCENE.fillCool} />
       {/* Axis points along +x; lathe revolves around Y, so rotate the group. */}
       <group rotation={[0, 0, Math.PI / 2]}>
         {segments.map((seg, i) => (

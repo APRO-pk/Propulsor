@@ -17,6 +17,8 @@ interface EngineState {
   l2: L2ResultDto | null;
   perfMap: PerfMapDto | null;
   loading: boolean;
+  /** Increments on every completed solve (Solve buttons, Requirements). */
+  solveCount: number;
   error: string | null;
   /** Undo/redo history of whole-design snapshots (report option #16). */
   undoStack: EngineDesignDto[];
@@ -61,6 +63,7 @@ export const useEngineStore = create<EngineState>((set) => ({
   l2: null,
   perfMap: null,
   loading: false,
+  solveCount: 0,
   error: null,
   undoStack: [],
   redoStack: [],
@@ -69,7 +72,7 @@ export const useEngineStore = create<EngineState>((set) => ({
     set({ loading: true, error: null });
     try {
       const design = await getDesign();
-      set({ ...hydrate(design), loading: false, undoStack: [], redoStack: [] });
+      set((st) => ({ ...hydrate(design), loading: false, undoStack: [], redoStack: [], solveCount: st.solveCount + 1 }));
     } catch (err) {
       set({ loading: false, error: String(err) });
     }

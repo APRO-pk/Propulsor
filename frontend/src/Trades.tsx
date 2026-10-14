@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
+import { useSharedState } from "./sharedState";
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { tradeBundle, sweep, type TradeBundleDto, type SweepResultDto } from "./api";
 import { useEngineStore } from "./store";
 
-const AXIS = { fill: "#6b7280", fontSize: 12 } as const;
-const TT = { background: "#fff", border: "1px solid #b9bcc4", borderRadius: 4, fontSize: 12 } as const;
-const CUR = "#c47b12"; // current-design marker colour
+const AXIS = { fill: "var(--ink-3)", fontSize: 12 } as const;
+const TT = { background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: 4, fontSize: 12 } as const;
+const CUR = "var(--ink)"; // current design: a plain solid marker
+const REF = "var(--ink-3)"; // optimum / recommendation: a quiet dashed reference
 
 export function Trades() {
   const [t, setT] = useState<TradeBundleDto | null>(null);
@@ -27,8 +29,8 @@ export function Trades() {
   const curPcBar = (design?.operating_point.chamber_pressure ?? 6e6) / 1e5;
 
   const [sw, setSw] = useState<SweepResultDto | null>(null);
-  const [metric, setMetric] = useState<"isp" | "cstar" | "tc">("isp");
-  const [range, setRange] = useState(() => ({
+  const [metric, setMetric] = useSharedState<"isp" | "cstar" | "tc">("trades.metric", "isp");
+  const [range, setRange] = useSharedState("trades.range", () => ({
     pcMin: Math.max(5, Math.round(curPcBar * 0.5)),
     pcMax: Math.max(10, Math.round(curPcBar * 1.5)),
     pcSteps: 5, ofMin: 2, ofMax: 4, ofSteps: 5,
@@ -39,18 +41,18 @@ export function Trades() {
 
   return (
     <div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 12 }}>
         <fieldset className="qt-groupbox">
           <legend>O/F sweep → vacuum Isp (optimum {t.optimal_of.toFixed(2)})</legend>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={t.of_sweep} margin={{ top: 6, right: 14, bottom: 4, left: 0 }}>
-              <CartesianGrid stroke="#dcdce2" strokeDasharray="3 3" />
-              <XAxis dataKey="of" stroke="#6b7280" tick={AXIS} label={{ value: "O/F", position: "insideBottom", offset: -3, fill: "#6b7280" }} />
-              <YAxis stroke="#6b7280" tick={AXIS} domain={["auto", "auto"]} label={{ value: "Isp vac (s)", angle: -90, position: "insideLeft", fill: "#6b7280" }} />
+              <CartesianGrid stroke="var(--line)" strokeDasharray="3 3" />
+              <XAxis dataKey="of" stroke="var(--ink-3)" tick={AXIS} label={{ value: "O/F", position: "insideBottom", offset: -3, fill: "var(--ink-3)" }} />
+              <YAxis stroke="var(--ink-3)" tick={AXIS} domain={["auto", "auto"]} label={{ value: "Isp vac (s)", angle: -90, position: "insideLeft", fill: "var(--ink-3)" }} />
               <Tooltip contentStyle={TT} />
-              <ReferenceLine x={t.optimal_of} stroke="#2f8f46" strokeDasharray="4 3" label={{ value: "opt", fill: "#2f8f46", fontSize: 11 }} />
+              <ReferenceLine x={t.optimal_of} stroke={REF} strokeDasharray="4 3" label={{ value: "opt", fill: REF, fontSize: 11 }} />
               {curOf > 0 && <ReferenceLine x={+curOf.toFixed(2)} stroke={CUR} label={{ value: "current", fill: CUR, fontSize: 11 }} />}
-              <Line type="monotone" dataKey="isp_vac_s" stroke="#3574e0" dot={false} strokeWidth={2} />
+              <Line type="monotone" dataKey="isp_vac_s" stroke="var(--cyan)" dot={false} strokeWidth={2} />
             </LineChart>
           </ResponsiveContainer>
         </fieldset>
@@ -59,14 +61,14 @@ export function Trades() {
           <legend>Expansion sweep → thrust coefficient (opt ε {t.optimal_area_ratio.toFixed(0)})</legend>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={t.expansion_sweep.map((p) => ({ ...p, cf_sea_level: Math.max(0, p.cf_sea_level) }))} margin={{ top: 6, right: 14, bottom: 4, left: 0 }}>
-              <CartesianGrid stroke="#dcdce2" strokeDasharray="3 3" />
-              <XAxis dataKey="area_ratio" stroke="#6b7280" tick={AXIS} scale="log" domain={["auto", "auto"]} label={{ value: "area ratio ε", position: "insideBottom", offset: -3, fill: "#6b7280" }} />
-              <YAxis stroke="#6b7280" tick={AXIS} domain={[0, "auto"]} label={{ value: "Cf", angle: -90, position: "insideLeft", fill: "#6b7280" }} />
+              <CartesianGrid stroke="var(--line)" strokeDasharray="3 3" />
+              <XAxis dataKey="area_ratio" stroke="var(--ink-3)" tick={AXIS} scale="log" domain={["auto", "auto"]} label={{ value: "area ratio ε", position: "insideBottom", offset: -3, fill: "var(--ink-3)" }} />
+              <YAxis stroke="var(--ink-3)" tick={AXIS} domain={[0, "auto"]} label={{ value: "Cf", angle: -90, position: "insideLeft", fill: "var(--ink-3)" }} />
               <Tooltip contentStyle={TT} />
-              <ReferenceLine x={t.optimal_area_ratio} stroke="#2f8f46" strokeDasharray="4 3" label={{ value: "traj. opt", fill: "#2f8f46", fontSize: 11 }} />
+              <ReferenceLine x={t.optimal_area_ratio} stroke={REF} strokeDasharray="4 3" label={{ value: "traj. opt", fill: REF, fontSize: 11 }} />
               {curEps > 0 && <ReferenceLine x={+curEps.toFixed(1)} stroke={CUR} label={{ value: "current", fill: CUR, fontSize: 11 }} />}
-              <Line type="monotone" dataKey="cf_vacuum" name="vacuum" stroke="#c23b34" dot={false} strokeWidth={2} />
-              <Line type="monotone" dataKey="cf_sea_level" name="sea level" stroke="#3574e0" dot={false} strokeWidth={2} />
+              <Line type="monotone" dataKey="cf_vacuum" name="vacuum" stroke="var(--violet)" dot={false} strokeWidth={2} />
+              <Line type="monotone" dataKey="cf_sea_level" name="sea level" stroke="var(--cyan)" dot={false} strokeWidth={2} />
             </LineChart>
           </ResponsiveContainer>
           <p className="qt-caption">Sea-level Cf is floored at 0: a real over-expanded nozzle flow-separates rather than producing negative thrust. "traj. opt" is the trajectory-averaged optimum, not the sea-level peak.</p>
@@ -77,18 +79,18 @@ export function Trades() {
         <legend>L* sweep → chamber length (recommended {t.recommended_l_star_m.toFixed(2)} m)</legend>
         <ResponsiveContainer width="100%" height={190}>
           <LineChart data={t.l_star_sweep.map((p) => ({ ...p, len_mm: p.chamber_length_m * 1000 }))} margin={{ top: 6, right: 14, bottom: 4, left: 18 }}>
-            <CartesianGrid stroke="#dcdce2" strokeDasharray="3 3" />
-            <XAxis dataKey="l_star_m" stroke="#6b7280" tick={AXIS} label={{ value: "L* (m)", position: "insideBottom", offset: -3, fill: "#6b7280" }} />
-            <YAxis stroke="#6b7280" tick={AXIS} width={70} label={{ value: "chamber L (mm)", angle: -90, position: "insideLeft", fill: "#6b7280" }} />
+            <CartesianGrid stroke="var(--line)" strokeDasharray="3 3" />
+            <XAxis dataKey="l_star_m" stroke="var(--ink-3)" tick={AXIS} label={{ value: "L* (m)", position: "insideBottom", offset: -3, fill: "var(--ink-3)" }} />
+            <YAxis stroke="var(--ink-3)" tick={AXIS} width={70} label={{ value: "chamber L (mm)", angle: -90, position: "insideLeft", fill: "var(--ink-3)" }} />
             <Tooltip contentStyle={TT} />
-            <ReferenceLine x={t.recommended_l_star_m} stroke="#2f8f46" strokeDasharray="4 3" label={{ value: "rec", fill: "#2f8f46", fontSize: 11 }} />
+            <ReferenceLine x={t.recommended_l_star_m} stroke={REF} strokeDasharray="4 3" label={{ value: "rec", fill: REF, fontSize: 11 }} />
             {curLStar > 0 && <ReferenceLine x={+curLStar.toFixed(2)} stroke={CUR} label={{ value: "current", fill: CUR, fontSize: 11 }} />}
-            <Line type="monotone" dataKey="len_mm" stroke="#7a5bd0" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="len_mm" stroke="var(--violet)" dot={false} strokeWidth={2} />
           </LineChart>
         </ResponsiveContainer>
       </fieldset>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 12 }}>
         <fieldset className="qt-groupbox">
           <legend>Material trade-off</legend>
           <table className="qt-proptable">
@@ -128,19 +130,22 @@ export function Trades() {
 
       <fieldset className="qt-groupbox">
         <legend>Parametric sweep (Pc × O/F) — CEA-style</legend>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 8 }}>
-          {([["Pc min (bar)", "pcMin"], ["Pc max (bar)", "pcMax"], ["Pc steps", "pcSteps"], ["O/F min", "ofMin"], ["O/F max", "ofMax"], ["O/F steps", "ofSteps"]] as const).map(([lbl, key]) => (
-            <label key={key} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <span style={{ fontSize: 11, color: "#6b7280" }}>{lbl}</span>
-              <input type="number" style={{ width: 82 }} value={range[key]} onChange={(e) => setRange((r) => ({ ...r, [key]: Number(e.target.value) }))} />
-            </label>
-          ))}
-          <button className="qt-tool" onClick={runSweep}>Run sweep</button>
-          <span style={{ marginLeft: 8 }}>
-            {([["isp", "Isp vac"], ["cstar", "c*"], ["tc", "T_c"]] as const).map(([m, lbl]) => (
-              <button key={m} className={`qt-tool ${metric === m ? "on" : ""}`} style={{ marginLeft: 4 }} onClick={() => setMetric(m)}>{lbl}</button>
+        {([["Pc min (bar)", "pcMin"], ["Pc max (bar)", "pcMax"], ["Pc steps", "pcSteps"], ["O/F min", "ofMin"], ["O/F max", "ofMax"], ["O/F steps", "ofSteps"]] as const).map(([lbl, key]) => (
+          <label key={key} className="qt-field">
+            <span>{lbl}</span>
+            <input type="number" value={range[key]} onChange={(e) => setRange((r) => ({ ...r, [key]: Number(e.target.value) }))} />
+          </label>
+        ))}
+        <div className="qt-field">
+          <span>Tabulate</span>
+          <span className="seg" role="group" aria-label="Value to tabulate">
+            {([["isp", "Isp vac"], ["cstar", "c*"], ["tc", "Tc"]] as const).map(([m, lbl]) => (
+              <button key={m} aria-pressed={metric === m} onClick={() => setMetric(m)}>{m === "tc" ? <>T<sub>c</sub></> : lbl}</button>
             ))}
           </span>
+        </div>
+        <div className="qt-actions">
+          <button className="qt-tool" onClick={runSweep}>Run sweep</button>
         </div>
         {sw ? (
           <table className="qt-proptable">
@@ -164,7 +169,7 @@ export function Trades() {
             </tbody>
           </table>
         ) : (
-          <p className="muted">Set the Pc and O/F ranges and click "Run sweep" to tabulate equilibrium Isp / c* / T_c across the grid (steps capped at 9 each).</p>
+          <p className="muted">Set the Pc and O/F ranges and click "Run sweep" to tabulate equilibrium Isp / c* / T<sub>c</sub> across the grid (steps capped at 9 each).</p>
         )}
         <p className="qt-caption" style={{ marginTop: 4 }}>Isp is the vacuum ideal-max (Γ-limit) from the equilibrium solve; rows = O/F, columns = chamber pressure (bar).</p>
       </fieldset>

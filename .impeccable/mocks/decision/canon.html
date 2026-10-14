@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Propulsor — Engineering workbench</title>
+<style>
+:root{--bg:#f3f4f6;--panel:#fff;--ink:#1f2933;--dim:#616e7c;--line:#d9dee4;--acc:#2f6fdb}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;background:var(--bg);font:13px/1.4 "Segoe UI",system-ui,sans-serif;color:var(--ink);display:grid;grid-template:30px 92px 1fr 24px/260px 1fr 320px;font-variant-numeric:tabular-nums}
+.tabs{grid-column:1/-1;display:flex;background:#fff;border-bottom:1px solid var(--line)}
+.tabs span{padding:6px 16px}.tabs .on{border-bottom:2px solid var(--acc);color:var(--acc);font-weight:600}
+.ribbon{grid-column:1/-1;display:flex;background:#fff;border-bottom:1px solid var(--line)}
+.grp{display:flex;flex-direction:column;border-right:1px solid var(--line);padding:6px 10px}
+.grp .b{display:flex;gap:6px;flex:1}.grp .b span{width:58px;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11.5px}
+.grp .b i{width:28px;height:28px;border-radius:5px;background:#e3ebf9}
+.grp .l{font-size:11px;color:var(--dim);text-align:center}
+.tree{background:var(--panel);border-right:1px solid var(--line);padding:10px 0}
+.ph{font-size:11.5px;font-weight:600;color:var(--dim);padding:4px 12px 8px;text-transform:uppercase;letter-spacing:.04em}
+.tree p{padding:4px 12px}.tree .c{padding-left:28px}.tree .on{background:#e3ebf9;color:var(--acc);font-weight:600}
+main{padding:14px 18px;display:grid;grid-template-columns:1fr 1fr;gap:14px;align-content:start}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px}
+.box h3{font-size:13px;margin-bottom:8px}
+.row{display:grid;grid-template-columns:1fr 110px 40px;gap:8px;padding:4px 0;align-items:center}
+.row label{color:var(--dim)}.in{border:1px solid #b9c2cc;border-radius:4px;padding:3px 6px;text-align:right;background:#fff}
+.wide{grid-column:1/-1;height:250px}
+.props{background:var(--panel);border-left:1px solid var(--line);padding:10px 0}
+.props table{width:100%;border-collapse:collapse}.props td{padding:4px 12px;border-bottom:1px solid #eef1f4}.props td:last-child{text-align:right;font-weight:600}
+.props .h td{background:#f7f9fb;font-weight:600;color:var(--dim);font-size:11.5px}
+.issue{margin:8px 12px;padding:8px 10px;border-radius:6px;background:#fdecea;color:#a12a20;font-size:12px}
+.st{grid-column:1/-1;background:#fff;border-top:1px solid var(--line);display:flex;gap:18px;padding:3px 12px;font-size:11.5px;color:var(--dim)}
+</style></head><body>
+<div class="tabs"><span>File</span><span class="on">Design</span><span>Analysis</span><span>Simulation</span><span>Export</span><span>View</span></div>
+<div class="ribbon">
+  <div class="grp"><div class="b"><span><i></i>New</span><span><i></i>Open</span><span><i></i>Save</span></div><div class="l">Project</div></div>
+  <div class="grp"><div class="b"><span><i></i>Solve</span><span><i></i>Undo</span><span><i></i>Redo</span></div><div class="l">Solver</div></div>
+  <div class="grp"><div class="b"><span><i></i>Cooling</span><span><i></i>Stress</span><span><i></i>Turbo</span><span><i></i>Feed</span></div><div class="l">Subsystems</div></div>
+  <div class="grp"><div class="b"><span><i></i>Trades</span><span><i></i>Validate</span></div><div class="l">Studies</div></div>
+  <div class="grp"><div class="b"><span><i></i>STEP</span><span><i></i>Report</span></div><div class="l">Export</div></div></div>
+<div class="tree"><div class="ph">Model tree</div><p>▾ untitled (Rev 24)</p><p class="c">Requirements</p><p class="c">Combustion</p><p class="c">Nozzle</p><p class="c on">Cooling</p><p class="c">Structures</p><p class="c">Injector</p><p class="c">Turbopumps</p><p class="c">Feed system</p><p class="c">Control</p><p class="c">Validation</p></div>
+<main><div class="box"><h3>Wall &amp; method</h3><div class="row"><label>Cooling method</label><span class="in">Regenerative</span><span></span></div><div class="row"><label>Wall material</label><span class="in">CuCrZr</span><span></span></div><div class="row"><label>Max wall temp</label><b style="text-align:right">812 K</b><span>/900</span></div></div>
+  <div class="box"><h3>Coolant channels</h3><div class="row"><label>Count</label><span class="in">80</span><span></span></div><div class="row"><label>Width</label><span class="in">0.80</span><span>mm</span></div><div class="row"><label>Height</label><span class="in">1.50</span><span>mm</span></div></div>
+  <div class="box wide"><h3>Wall temperature along axis</h3><svg width="100%" height="200" viewBox="0 0 900 200" preserveAspectRatio="none"><path d="M0 180H900" stroke="#d9dee4"/><path d="M0 130C200 126 330 112 430 66C480 40 510 36 550 60C650 112 780 140 900 148" fill="none" stroke="#2f6fdb" stroke-width="2.5"/></svg></div></main>
+<div class="props"><div class="ph">Properties</div><div class="issue">1 failed check · 3 warnings</div>
+  <table><tr class="h"><td colspan="2">L0 Sizing</td></tr><tr><td>Total flow</td><td>8.791 kg/s</td></tr><tr><td>Throat dia.</td><td>56.0 mm</td></tr><tr><td>Exit dia.</td><td>107.0 mm</td></tr>
+  <tr class="h"><td colspan="2">L1 Thermochemistry</td></tr><tr><td>T_c</td><td>3599 K</td></tr><tr><td>γ</td><td>1.201</td></tr><tr><td>c*</td><td>1827 m/s</td></tr>
+  <tr class="h"><td colspan="2">L2 Nozzle</td></tr><tr><td>Area ratio</td><td>3.65</td></tr><tr><td>Exit Mach</td><td>2.41</td></tr></table></div>
+<div class="st"><span>untitled</span><span>Rev 24</span><span>6 tiers solved</span><span>SI</span></div>
+</body></html>

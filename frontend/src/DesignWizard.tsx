@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
+import { PAIR_LABEL } from "./propellants";
+import { PRESETS, applyPreset } from "./presets";
 import { useEngineStore } from "./store";
+import { useDesignChoice, useDesignParam } from "./sharedState";
 import { designAdvice, coolingStudy, turbopumpStudy, type DesignAdviceDto, type CoolingStudyDto, type TurbopumpStudyDto } from "./api";
 import { downloadText } from "./exporters";
 import { CommitNumberField, ParamChoice, ParamField, UnitNumberField } from "./ParamInput";
 import { engineProfile } from "./exporters";
+import { Ico } from "./Icons";
 
 // Approximate stoichiometric O/F per pair, for equivalence-ratio / %-fuel input.
 const STOICH_OF: Record<string, number> = {
@@ -23,13 +27,6 @@ const STOICH_OF: Record<string, number> = {
 //  · 50 kN LOX/LH₂ — CuCrZr channel-wall chamber (100 × 1.0 × 2.0 mm, 2.2× Pc)
 //    plus a 10 % hydrogen film; channels alone can't meet both the wall limit
 //    and the jacket pressure budget in this model (real engines run a few %)
-const PRESETS: { name: string; fields: [string, number | string][] }[] = [
-  { name: "GOX/Kerosene test · 500 N", fields: [["propellant_pair", "GoxKerosene"], ["thrust", 500], ["chamber_pressure", 15e5], ["mixture_ratio", 2.4], ["l_star", 1.0], ["wall_material", "OFHC Copper"], ["cooling_method", "regen"], ["cooling.coolant", "Water"], ["cooling.coolant_velocity_m_s", 20], ["cooling.coolant_pressure_bar", 40]] },
-  { name: "LOX/Methane · 25 kN", fields: [["propellant_pair", "LoxMethane"], ["thrust", 25000], ["chamber_pressure", 60e5], ["mixture_ratio", 3.4], ["l_star", 0.8], ["wall_material", "CuCrZr"], ["cooling_method", "regen"], ["cooling.channel_count", 80], ["cooling.channel_width_mm", 0.8], ["cooling.channel_height_mm", 1.5], ["cooling.coolant_pressure_factor", 2.0]] },
-  { name: "LOX/RP-1 booster · 100 kN", fields: [["propellant_pair", "LoxRp1"], ["thrust", 100000], ["chamber_pressure", 70e5], ["mixture_ratio", 2.6], ["l_star", 1.0], ["wall_material", "SS 316L"], ["cooling_method", "ablative"]] },
-  { name: "N₂O/Propane · 2 kN", fields: [["propellant_pair", "NitrousPropane"], ["thrust", 2000], ["chamber_pressure", 20e5], ["mixture_ratio", 6.5], ["l_star", 1.1], ["cooling_method", "ablative"]] },
-  { name: "LOX/LH₂ upper · 50 kN", fields: [["propellant_pair", "LoxHydrogen"], ["thrust", 50000], ["chamber_pressure", 50e5], ["mixture_ratio", 5.5], ["l_star", 0.7], ["wall_material", "CuCrZr"], ["cooling_method", "film"], ["cooling.film_fraction", 0.1], ["cooling.channel_count", 100], ["cooling.channel_width_mm", 1.0], ["cooling.channel_height_mm", 2.0], ["cooling.coolant_pressure_factor", 2.2]] },
-];
 
 const STEPS = ["Propellant & mission", "Performance / O·F", "Nozzle & expansion", "Cooling", "Feed & turbomachinery", "Review & export"];
 
@@ -39,15 +36,43 @@ const PAIRS = [
   "NitrousPropane", "NtoMmh", "NtoUdmh", "H2o2Kerosene",
 ];
 
+type Strategy = "performance" | "separation-safe" | "sea-level";
+type OfMode = "O/F" | "φ" | "%fuel";
+type FeedLabel = "Auto" | "Self-pressurizing" | "Pressure-fed" | "Pump-fed";
+/** The design stores the Feed tab's ids ("" = Auto); the wizard shows labels. */
+const FEED_ID: Record<FeedLabel, string> = { Auto: "", "Self-pressurizing": "self-pressurizing", "Pressure-fed": "pressure-fed", "Pump-fed": "pump-fed" };
+const FEED_LABEL: Record<string, FeedLabel> = Object.fromEntries(Object.entries(FEED_ID).map(([l, id]) => [id, l as FeedLabel]));
+
 export function DesignWizard() {
   const store = useEngineStore();
   const { l0, l1, l2, design } = store;
   const [step, setStep] = useState(0);
-  const [burnoutKm, setBurnoutKm] = useState(40);
-  const [strategy, setStrategy] = useState<"performance" | "separation-safe" | "sea-level">("performance");
-  const [feed, setFeed] = useState<"Auto" | "Self-pressurizing" | "Pressure-fed" | "Pump-fed">("Pump-fed");
-  const [ofMode, setOfMode] = useState<"O/F" | "φ" | "%fuel">("O/F");
-  const [rpm, setRpm] = useState(20000);
+  // Every requirement decision lives in the design, so it is saved with it and
+  // matches the Feed, Control and Turbopump tabs.
+  const [burnoutKm, setBurnoutKm] = useDesignParam("mission.burnout_altitude_km", 40);
+  const [strategyRaw, setStrategyRaw] = useDesignChoice("nozzle.expansion_strategy", "performance");
+  const strategy = strategyRaw as Strategy;
+  const [feedId, setFeedId] = useDesignChoice("feed.type", "");
+  const feed = FEED_LABEL[feedId] ?? "Auto";
+  const setFeed = (label: FeedLabel) => setFeedId(FEED_ID[label]);
+  const [rpm, setRpm] = useDesignParam("turbo.shaft_speed_rpm", 20000);
+  // How the mixture ratio is entered is a display preference, kept per user.
+  const [ofMode, setOfModeState] = useState<OfMode>(() => {
+    try {
+      const v = localStorage.getItem("propulsor.ofMode");
+      return v === "φ" || v === "%fuel" ? v : "O/F";
+    } catch {
+      return "O/F";
+    }
+  });
+  const setOfMode = (m: OfMode) => {
+    setOfModeState(m);
+    try {
+      localStorage.setItem("propulsor.ofMode", m);
+    } catch {
+      /* storage unavailable: the choice lasts this session */
+    }
+  };
 
   const [advice, setAdvice] = useState<DesignAdviceDto | null>(null);
   const [cool, setCool] = useState<CoolingStudyDto | null>(null);
@@ -76,8 +101,8 @@ export function DesignWizard() {
   useEffect(() => { coolingStudy(curMaterial, curMethod).then(setCool).catch(() => {}); }, [curMaterial, curMethod, curNozzleMat]);
   useEffect(() => { if (feed === "Pump-fed") turbopumpStudy(rpm).then(setTurbo).catch(() => {}); }, [rpm, feed, design?.operating_point.thrust]);
 
-  const applyStrategy = (s: typeof strategy) => {
-    setStrategy(s);
+  const applyStrategy = (s: Strategy) => {
+    setStrategyRaw(s);
     if (!advice) return;
     const eps = s === "performance" ? advice.expansion.optimal_area_ratio : s === "separation-safe" ? advice.expansion.separation_limited_area_ratio : advice.expansion.sea_level_optimal_area_ratio;
     store.apply("expansion_ratio", Number(eps.toFixed(2)));
@@ -93,10 +118,6 @@ export function DesignWizard() {
     );
   };
 
-  const applyPreset = async (p: (typeof PRESETS)[number]) => {
-    await store.reset();
-    for (const [k, v] of p.fields) await store.apply(k, v);
-  };
 
   // Design report (Markdown). Detail level (CEA-style) controls verbosity:
   //  · short — requirements + a one-line performance summary
@@ -166,7 +187,7 @@ export function DesignWizard() {
         L.push(`- Combustor model: ${design?.choices?.["thermo.combustor_model"] ?? "infinite"} → p₀/p_inj ×${(l2.combustor_pressure_ratio ?? 1).toFixed(4)} (M_c ${(l2.chamber_mach ?? 0).toFixed(3)})`);
         L.push(`- Divergence λ ×${l2.divergence_correction.toFixed(4)} · boundary-layer ×${l2.boundary_layer_correction.toFixed(4)}`);
       }
-      L.push("", "## Debug — raw tier payloads", "");
+      L.push("", "## Debug — raw solver data", "");
       (design?.caches ?? []).forEach((c) => {
         L.push("", `### ${c.tier} (${c.status})`);
         L.push("```json", JSON.stringify(c.payload ?? c.error ?? null, null, 2), "```");
@@ -235,14 +256,20 @@ export function DesignWizard() {
 
   return (
     <div className="wizard">
-      <div className="wizard-rail">
+      <nav className="wizard-rail" aria-label="Design steps">
         {STEPS.map((s, i) => (
-          <div key={s} className={`wizard-step ${i === step ? "active" : ""} ${i < step ? "done" : ""}`} onClick={() => setStep(i)}>
-            <span className="num">{i < step ? "✓" : i + 1}</span>
+          <button
+            key={s}
+            type="button"
+            className={`wizard-step ${i === step ? "active" : ""} ${i < step ? "done" : ""}`}
+            aria-current={i === step ? "step" : undefined}
+            onClick={() => setStep(i)}
+          >
+            <span className="num">{i + 1}</span>
             {s}
-          </div>
+          </button>
         ))}
-      </div>
+      </nav>
 
       <div className="wizard-body">
         <h2 className="wizard-title">Step {step + 1} — {STEPS[step]}</h2>
@@ -258,12 +285,12 @@ export function DesignWizard() {
                 ))}
               </span>
             </div>
-            <hr style={{ border: "none", borderTop: "1px solid #e2e2e6", margin: "8px 0" }} />
+            <hr style={{ border: "none", borderTop: "1px solid var(--line)", margin: "8px 0" }} />
             <label className="qt-field" title="Fuel/oxidizer combination — sets the thermochemistry (Tc, γ, c*)">
               <span>Propellant pair</span>
               <select title="Fuel/oxidizer combination — sets the thermochemistry (Tc, γ, c*)" value={pairSet ? pair : ""} onChange={(e) => store.apply("propellant_pair", e.target.value)}>
                 <option value="">— Select propellant —</option>
-                {PAIRS.map((p) => <option key={p} value={p}>{p}</option>)}
+                {PAIRS.map((p) => <option key={p} value={p}>{PAIR_LABEL[p] ?? p}</option>)}
               </select>
             </label>
             <label className="qt-field">
@@ -287,12 +314,12 @@ export function DesignWizard() {
             </label>
             <label className="qt-field" title="mission burnout altitude — drives the recommended expansion ratio">
               <span>Target burnout altitude (km)</span>
-              <input type="number" step={5} title="mission burnout altitude — drives the recommended expansion ratio" value={burnoutKm} onChange={(e) => setBurnoutKm(Number(e.target.value))} />
+              <CommitNumberField value={burnoutKm} step={5} min={0} hint="mission burnout altitude — drives the recommended expansion ratio" onCommit={(n) => n >= 0 && setBurnoutKm(n)} />
             </label>
             {pairSet && (
               <>
-                <hr style={{ border: "none", borderTop: "1px solid #e2e2e6", margin: "8px 0" }} />
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+                <hr style={{ border: "none", borderTop: "1px solid var(--line)", margin: "8px 0" }} />
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: "0 12px" }}>
                   <ParamField label="Fuel inlet temp" k="reactant.fuel_temp_k" def={298} step={5} dim="temperature" baseUnit="K" hint="cryogenic inlets (e.g. LH₂ ~20 K) lower the flame temperature" />
                   <ParamField label="Oxidizer inlet temp" k="reactant.ox_temp_k" def={298} step={5} dim="temperature" baseUnit="K" hint="e.g. LOX ~90 K" />
                   <ParamChoice label="Fuel state" k="reactant.fuel_state" def="liquid" options={["liquid", "gas"]} />
@@ -304,9 +331,9 @@ export function DesignWizard() {
               <p className="muted">Enter thrust, chamber pressure, mixture ratio and a propellant to build the engine — nothing is pre-computed.</p>
             ) : (
               <>
-                <div className="qt-field"><span>Flame temperature T_c</span><b>{l1 ? `${l1.tc_k.toFixed(0)} K` : "—"}</b></div>
+                <div className="qt-field"><span>Flame temperature T<sub>c</sub></span><b>{l1 ? `${l1.tc_k.toFixed(0)} K` : "—"}</b></div>
                 <div className="qt-field"><span>Vacuum Isp (equilibrium)</span><b>{l1 ? `${l1.isp_vacuum_s.toFixed(0)} s` : "—"}</b></div>
-                <p className="muted">Choices are written to the design and every dependent tier re-solves live.</p>
+                <p className="muted">Choices are written to the design and everything that depends on them re-solves live.</p>
               </>
             )}
           </fieldset>
@@ -318,7 +345,7 @@ export function DesignWizard() {
             <div className="qt-field"><span>Current O/F</span><b>{curOf.toFixed(2)}</b></div>
             <div className="qt-field"><span>Optimal O/F (max Isp)</span><b>{advice ? `${advice.optimal_of.toFixed(2)} → ${advice.optimal_isp_vac_s.toFixed(0)} s` : "…"}</b></div>
             <button className="qt-tool" disabled={!advice} onClick={() => advice && store.apply("of_ratio", Number(advice.optimal_of.toFixed(2)))}>Use optimal O/F</button>
-            <hr style={{ border: "none", borderTop: "1px solid #e2e2e6", margin: "10px 0" }} />
+            <hr style={{ border: "none", borderTop: "1px solid var(--line)", margin: "10px 0" }} />
             <label className="qt-field">
               <span>Characteristic length L*</span>
               <UnitNumberField value={curLStar} dim="length" unitKey="l_star" defUnit="m" step={0.05} min={0.05} max={5} hint="characteristic chamber length L* = V_chamber / A_throat; sets residence time" onCommit={(n) => store.apply("l_star", n)} />
@@ -347,12 +374,12 @@ export function DesignWizard() {
               ["sea-level", "Sea-level optimum", advice?.expansion.sea_level_optimal_area_ratio],
             ] as const).map(([id, label, val]) => (
               <label key={id} className="qt-field" style={{ cursor: "pointer" }}>
-                <span><input type="radio" checked={strategy === id} onChange={() => applyStrategy(id as typeof strategy)} style={{ marginRight: 8 }} />{label}</span>
+                <span><input type="radio" checked={strategy === id} onChange={() => applyStrategy(id as Strategy)} style={{ marginRight: 8 }} />{label}</span>
                 <b>ε = {val ? val.toFixed(1) : "…"}</b>
               </label>
             ))}
             {advice?.expansion.separated_at_sea_level && strategy === "performance" && (
-              <p className="err">⚠ The max-performance nozzle (ε={advice.expansion.optimal_area_ratio.toFixed(0)}) flow-separates at sea level — use the separation-safe ratio for a lift-off nozzle.</p>
+              <p className="err flag"><Ico name="warn" size={15} />The max-performance nozzle (ε={advice.expansion.optimal_area_ratio.toFixed(0)}) flow-separates at sea level — use the separation-safe ratio for a lift-off nozzle.</p>
             )}
             {l2 && (
               <>
@@ -372,7 +399,7 @@ export function DesignWizard() {
             )}
             <div className="qt-field"><span>Design expansion ratio (solved)</span><b>ε = {curEps.toFixed(1)}</b></div>
             <div className="qt-field"><span>Exit pressure (solved)</span><b>{l2 ? `${(l2.exit_pressure_pa / 1e5).toFixed(3)} bar` : "—"}</b></div>
-            <hr style={{ border: "none", borderTop: "1px solid #e2e2e6", margin: "10px 0" }} />
+            <hr style={{ border: "none", borderTop: "1px solid var(--line)", margin: "10px 0" }} />
             <ParamChoice label="Nozzle flow model" k="thermo.flow_model" def="equilibrium" options={["equilibrium", "frozen"]} hint="equilibrium (shifting) recombines in the nozzle for a few % more Isp; frozen holds the chamber composition (approximate first-order correction)" />
             <ParamChoice label="Combustor model" k="thermo.combustor_model" def="infinite" options={["infinite", "finite"]} hint="infinite-area (CEA IAC) treats the chamber as stagnant — full chamber pressure; finite-area (FAC) uses the contraction ratio to compute the subsonic chamber Mach and its momentum-pressure loss" />
             {design?.choices?.["thermo.combustor_model"] === "finite" && (
@@ -441,7 +468,7 @@ export function DesignWizard() {
             </div>
             {feed === "Pump-fed" && (
               <>
-                <label className="qt-field"><span>Shaft speed (rpm)</span><input type="number" step={500} value={rpm} onChange={(e) => setRpm(Number(e.target.value))} /></label>
+                <label className="qt-field"><span>Shaft speed (rpm)</span><CommitNumberField value={rpm} step={500} min={1000} hint="shared with the Turbopump and Blades tabs" onCommit={(n) => n > 0 && setRpm(n)} /></label>
                 {turbo && (
                   <table className="qt-proptable">
                     <tbody>
@@ -476,7 +503,7 @@ export function DesignWizard() {
               </tbody>
             </table>
             <div style={{ marginTop: 10, maxWidth: 360 }}>
-              <ParamChoice label="Output detail" k="output.detail_level" def="long" options={["short", "long", "debug"]} hint="short = requirements + performance summary; long = every tier + species; debug = long + correction factors and raw tier payloads" />
+              <ParamChoice label="Output detail" k="output.detail_level" def="long" options={["short", "long", "debug"]} hint="short = requirements + performance summary; long = every solver stage + species; debug = long + correction factors and raw solver data" />
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
               <button className="qt-tool" onClick={() => printReportPdf((design?.choices?.["output.detail_level"] as "short" | "long" | "debug") ?? "long")} disabled={!l0}>Report (PDF)</button>
@@ -489,9 +516,9 @@ export function DesignWizard() {
         )}
 
         <div className="wizard-nav">
-          <button className="qt-tool" disabled={step === 0} onClick={() => setStep((s) => s - 1)}>‹ Back</button>
+          <button className="qt-tool" disabled={step === 0} onClick={() => setStep((s) => s - 1)}><Ico name="chevL" size={14} />Back</button>
           <div style={{ flex: 1 }} />
-          <button className="qt-tool" disabled={step === STEPS.length - 1} onClick={() => setStep((s) => s + 1)}>Next ›</button>
+          <button className="qt-tool" disabled={step === STEPS.length - 1} onClick={() => setStep((s) => s + 1)}>Next<Ico name="chevR" size={14} /></button>
         </div>
       </div>
     </div>

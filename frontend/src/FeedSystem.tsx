@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useDesignChoice, useSharedState } from "./sharedState";
 import { feedStudy, type FeedStudyDto, type AvionicsHarnessDto, type HarnessChannelDto } from "./api";
 import { useEngineStore } from "./store";
 import { ParamField, ParamChoice, ResetParams } from "./ParamInput";
@@ -15,8 +16,8 @@ const kg = (v: number) => `${v < 1 ? v.toFixed(3) : v.toFixed(1)} kg`;
 const vol = (v: number) => `${v < 1 ? v.toFixed(3) : v.toFixed(1)} L`;
 
 export function FeedSystem() {
-  const [burn, setBurn] = useState(30);
-  const [feedType, setFeedType] = useState("");
+  const [burn, setBurn] = useSharedState("feed.burn", 30);
+  const [feedType, setFeedType] = useDesignChoice("feed.type", "");
   const [study, setStudy] = useState<FeedStudyDto | null>(null);
   const rev = useEngineStore((s) => s.design?.meta.revision);
 
@@ -56,7 +57,7 @@ export function FeedSystem() {
 
       <fieldset className="qt-groupbox">
         <legend>Design inputs<span style={{ float: "right" }}><ResetParams prefix="feed." /></span></legend>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0 16px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "0 16px" }}>
           <ParamField label="Injector ΔP (frac of Pc)" k="feed.injector_dp_fraction" def={0.2} step={0.01} hint="0.15–0.3 typical" />
           <ParamField label="Line ΔP" k="feed.line_dp_bar" def={1.0} step={0.1} dim="pressure" baseUnit="bar" />
           <ParamField label="Pump-fed tank pressure" k="feed.pumpfed_tank_bar" def={3.0} step={0.5} dim="pressure" baseUnit="bar" />
@@ -71,7 +72,7 @@ export function FeedSystem() {
         </div>
       </fieldset>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 12 }}>
         <fieldset className="qt-groupbox">
           <legend>Propellant tanks</legend>
           <table className="qt-proptable">
@@ -125,26 +126,31 @@ export function FeedSystem() {
 }
 
 const SIGNAL_COLOR: Record<string, string> = {
-  power: "#c47b12",
-  pwm: "#3574e0",
-  digital: "#2f8f46",
-  analog: "#7a5bd0",
-  highvoltage: "#c23b34",
+  // Signal classes: neutral, accent and violet; only high voltage keeps the hazard red.
+  power: "var(--ink-2)",
+  pwm: "var(--cyan)",
+  digital: "#9cc2ef",
+  analog: "var(--violet)",
+  highvoltage: "var(--fail)",
 };
-const KIND_GLYPH: Record<string, string> = {
-  valve: "▽",
-  igniter: "✷",
-  sensor: "◉",
-  pump: "◆",
-  pressurant: "⬡",
+/** Component-kind marks for the harness, drawn in the blueprint pen. */
+const KIND_PATH: Record<string, string> = {
+  valve: "M-4 -3.5L4 3.5V-3.5L-4 3.5Z",
+  igniter: "M0 -4.5V4.5M-4.5 0H4.5M-3.2 -3.2L3.2 3.2M3.2 -3.2L-3.2 3.2",
+  sensor: "M0 -4a4 4 0 1 1 0 8a4 4 0 1 1 0-8M0 -1a1 1 0 1 1 0 2a1 1 0 1 1 0-2",
+  pump: "M0 -4.5L4.5 0L0 4.5L-4.5 0Z",
+  pressurant: "M-2.25 -3.9H2.25L4.5 0L2.25 3.9H-2.25L-4.5 0Z",
 };
+function KindMark({ kind, x, y }: { kind: string; x: number; y: number }) {
+  return <path transform={`translate(${x} ${y})`} d={KIND_PATH[kind] ?? "M-3 -3H3V3H-3Z"} fill="none" stroke="var(--cyan-2)" strokeWidth={1.2} />;
+}
 
 /** Avionics power budget, electrical harness diagram, and channel BOM. */
 function Avionics({ harness }: { harness: AvionicsHarnessDto }) {
   return (
     <div>
       <div className="qt-field"><span>Harness</span><span className="qt-badge solved">{harness.summary}</span></div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "0 16px", margin: "6px 0 10px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "0 16px", margin: "6px 0 10px" }}>
         <ParamField label="Bus voltage" k="avionics.bus_voltage_v" def={28} step={1} unit="V" />
         <ParamChoice label="Redundancy" k="avionics.redundancy" def="single" options={["single", "dual"]} hint="dual adds a redundant flight computer, main valves, and Pc sensor" />
         <ParamField label="Battery reserve ×" k="avionics.battery_reserve_factor" def={2.0} step={0.1} hint="battery sizing margin over mission energy" />
@@ -171,7 +177,7 @@ function Avionics({ harness }: { harness: AvionicsHarnessDto }) {
             <tr key={c.name}>
               <td>{c.name}</td>
               <td>{c.kind}</td>
-              <td><span style={{ color: SIGNAL_COLOR[c.signal] ?? "#555", fontWeight: 600 }}>{c.signal}</span></td>
+              <td><span style={{ color: SIGNAL_COLOR[c.signal] ?? "var(--ink-2)", fontWeight: 600 }}>{c.signal}</span></td>
               <td className="val">{c.voltage_v.toFixed(0)}</td>
               <td className="val">{c.current_a >= 0.1 ? c.current_a.toFixed(1) : (c.current_a * 1000).toFixed(0) + "m"}</td>
               <td className="val">{c.wire_awg} AWG{c.continuous ? "" : " (pulsed)"}</td>
@@ -193,25 +199,26 @@ function HarnessDiagram({ channels }: { channels: HarnessChannelDto[] }) {
   const fcX = 20, fcW = 128, wireX0 = fcX + fcW, compX = 560;
   const gaugeW = (awg: number) => ({ 16: 4, 18: 3.2, 20: 2.6, 22: 2 }[awg] ?? 1.4);
   return (
-    <div style={{ overflowX: "auto", border: "1px solid var(--qt-border)", borderRadius: 4, background: "#fafbfc" }}>
+    <div style={{ overflowX: "auto", border: "1px solid var(--qt-border)", borderRadius: 4, background: "var(--bg-1)" }}>
       <svg viewBox={`0 0 640 ${h}`} width="100%" role="img" aria-label="avionics electrical harness">
         {/* Flight computer / PDU */}
-        <rect x={fcX} y={top} width={fcW} height={channels.length * rowH} rx={5} fill="#eef1f6" stroke="#6b7280" strokeWidth={1.5} />
-        <text x={fcX + fcW / 2} y={top + 18} textAnchor="middle" fontSize={12} fill="#333" fontWeight={700}>Flight computer</text>
-        <text x={fcX + fcW / 2} y={top + 33} textAnchor="middle" fontSize={9.5} fill="#666">+ power distribution</text>
-        <text x={fcX + fcW / 2} y={top + 48} textAnchor="middle" fontSize={9.5} fill="#666">28 V bus · MCU · TM</text>
+        <rect x={fcX} y={top} width={fcW} height={channels.length * rowH} rx={5} fill="var(--bg-3)" stroke="var(--ink-3)" strokeWidth={1.5} />
+        <text x={fcX + fcW / 2} y={top + 18} textAnchor="middle" fontSize={12} fill="var(--ink)" fontWeight={700}>Flight computer</text>
+        <text x={fcX + fcW / 2} y={top + 33} textAnchor="middle" fontSize={9.5} fill="var(--ink-2)">+ power distribution</text>
+        <text x={fcX + fcW / 2} y={top + 48} textAnchor="middle" fontSize={9.5} fill="var(--ink-2)">28 V bus · MCU · TM</text>
 
         {channels.map((c, i) => {
           const y = top + rowH * i + rowH / 2;
-          const color = SIGNAL_COLOR[c.signal] ?? "#555";
+          const color = SIGNAL_COLOR[c.signal] ?? "var(--ink-2)";
           const dash = c.continuous ? undefined : "6 4";
           return (
             <g key={c.name}>
               <line x1={wireX0} y1={y} x2={compX} y2={y} stroke={color} strokeWidth={gaugeW(c.wire_awg)} strokeDasharray={dash} />
               <circle cx={wireX0} cy={y} r={2.5} fill={color} />
-              <text x={compX + 8} y={y - 2} fontSize={11} fill="#222">{KIND_GLYPH[c.kind] ?? "•"} {c.name}</text>
-              <text x={wireX0 + 8} y={y - 4} fontSize={8.5} fill="#777">{c.wire_awg} AWG · {c.current_a >= 0.1 ? c.current_a.toFixed(1) + " A" : (c.current_a * 1000).toFixed(0) + " mA"}</text>
-              <text x={compX + 8} y={y + 9} fontSize={8} fill="#999">{c.connector}{c.continuous ? "" : " · pulsed"}</text>
+              <KindMark kind={c.kind} x={compX + 12} y={y - 6} />
+              <text x={compX + 22} y={y - 2} fontSize={11} fill="var(--ink)">{c.name}</text>
+              <text x={wireX0 + 8} y={y - 4} fontSize={8.5} fill="var(--ink-3)">{c.wire_awg} AWG · {c.current_a >= 0.1 ? c.current_a.toFixed(1) + " A" : (c.current_a * 1000).toFixed(0) + " mA"}</text>
+              <text x={compX + 8} y={y + 9} fontSize={8} fill="var(--ink-3)">{c.connector}{c.continuous ? "" : " · pulsed"}</text>
             </g>
           );
         })}
@@ -220,7 +227,7 @@ function HarnessDiagram({ channels }: { channels: HarnessChannelDto[] }) {
         {Object.entries(SIGNAL_COLOR).map(([sig, col], i) => (
           <g key={sig}>
             <line x1={fcX + i * 118} y1={h - 6} x2={fcX + 22 + i * 118} y2={h - 6} stroke={col} strokeWidth={3} />
-            <text x={fcX + 26 + i * 118} y={h - 3} fontSize={9} fill="#555">{sig}</text>
+            <text x={fcX + 26 + i * 118} y={h - 3} fontSize={9} fill="var(--ink-2)">{sig}</text>
           </g>
         ))}
       </svg>
@@ -232,8 +239,8 @@ function HarnessDiagram({ channels }: { channels: HarnessChannelDto[] }) {
 function PID({ study }: { study: FeedStudyDto }) {
   const pumpFed = study.feed_type === "pump-fed";
   const pressFed = study.feed_type === "pressure-fed";
-  const OX = "#5aa9e6";
-  const FU = "#e6a15a";
+  const OX = "var(--ox)";
+  const FU = "var(--fuel)";
   const line = (x1: number, y1: number, x2: number, y2: number, c: string) => (
     <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={c} strokeWidth={2.5} />
   );
@@ -245,14 +252,14 @@ function PID({ study }: { study: FeedStudyDto }) {
   );
   const pump = (x: number, y: number, c: string) => (
     <g>
-      <circle cx={x} cy={y} r={13} fill="#f5f6f8" stroke={c} strokeWidth={2.5} />
+      <circle cx={x} cy={y} r={13} fill="var(--bg-1)" stroke={c} strokeWidth={2.5} />
       <path d={`M ${x - 6} ${y} L ${x + 6} ${y - 5} L ${x + 6} ${y + 5} Z`} fill={c} />
     </g>
   );
   const tank = (x: number, y: number, c: string, label: string) => (
     <g>
-      <rect x={x - 34} y={y} width={68} height={78} rx={20} fill="#fafbfc" stroke={c} strokeWidth={2.5} />
-      <text x={x} y={y + 44} textAnchor="middle" fontSize={12} fill="#333" fontWeight={600}>{label}</text>
+      <rect x={x - 34} y={y} width={68} height={78} rx={20} fill="var(--bg-1)" stroke={c} strokeWidth={2.5} />
+      <text x={x} y={y + 44} textAnchor="middle" fontSize={12} fill="var(--ink)" fontWeight={600}>{label}</text>
     </g>
   );
 
@@ -261,16 +268,16 @@ function PID({ study }: { study: FeedStudyDto }) {
       {/* Pressurant */}
       {pressFed && (
         <g>
-          <circle cx={60} cy={54} r={26} fill="#eef7ee" stroke="#4a9d5a" strokeWidth={2.5} />
-          <text x={60} y={58} textAnchor="middle" fontSize={11} fill="#333">He</text>
-          {valve(60, 108, "#4a9d5a")}
-          {line(60, 80, 60, 100, "#4a9d5a")}
-          {line(60, 116, 60, 140, "#4a9d5a")}
-          {line(60, 140, 200, 140, "#4a9d5a")}
-          {line(200, 140, 440, 140, "#4a9d5a")}
-          {line(200, 140, 200, 150, "#4a9d5a")}
-          {line(440, 140, 440, 150, "#4a9d5a")}
-          <text x={250} y={134} fontSize={10} fill="#4a9d5a">regulated pressurant</text>
+          <circle cx={60} cy={54} r={26} fill="var(--bg-3)" stroke="var(--ink-2)" strokeWidth={2.5} />
+          <text x={60} y={58} textAnchor="middle" fontSize={11} fill="var(--ink)">He</text>
+          {valve(60, 108, "var(--ink-2)")}
+          {line(60, 80, 60, 100, "var(--ok)")}
+          {line(60, 116, 60, 140, "var(--ok)")}
+          {line(60, 140, 200, 140, "var(--ok)")}
+          {line(200, 140, 440, 140, "var(--ok)")}
+          {line(200, 140, 200, 150, "var(--ok)")}
+          {line(440, 140, 440, 150, "var(--ok)")}
+          <text x={250} y={134} fontSize={10} fill="var(--ok)">regulated pressurant</text>
         </g>
       )}
 
@@ -307,25 +314,25 @@ function PID({ study }: { study: FeedStudyDto }) {
       {/* Converge to injector */}
       {line(200, 330, 300, 330, OX)}
       {line(440, 330, 340, 330, FU)}
-      <rect x={300} y={322} width={40} height={16} fill="#c9ccd2" stroke="#8a8f98" />
-      <text x={320} y={318} textAnchor="middle" fontSize={9} fill="#555">injector</text>
+      <rect x={300} y={322} width={40} height={16} fill="var(--bg-4)" stroke="var(--ink-3)" />
+      <text x={320} y={318} textAnchor="middle" fontSize={9} fill="var(--ink-2)">injector</text>
 
       {/* Chamber + nozzle */}
-      <path d="M 305 338 L 335 338 L 342 356 L 298 356 Z" fill="#cdd2da" stroke="#7a8088" strokeWidth={1.5} />
+      <path d="M 305 338 L 335 338 L 342 356 L 298 356 Z" fill="var(--bg-4)" stroke="var(--ink-3)" strokeWidth={1.5} />
 
       {/* Avionics controller + sensors */}
-      <rect x={520} y={250} width={96} height={70} rx={4} fill="#f2f2f5" stroke="#6b7280" strokeWidth={1.5} />
-      <text x={568} y={270} textAnchor="middle" fontSize={11} fill="#333" fontWeight={600}>Avionics</text>
-      <text x={568} y={286} textAnchor="middle" fontSize={9} fill="#666">flight computer</text>
-      <text x={568} y={302} textAnchor="middle" fontSize={9} fill="#666">valve · igniter ctrl</text>
+      <rect x={520} y={250} width={96} height={70} rx={4} fill="var(--bg-3)" stroke="var(--ink-3)" strokeWidth={1.5} />
+      <text x={568} y={270} textAnchor="middle" fontSize={11} fill="var(--ink)" fontWeight={600}>Avionics</text>
+      <text x={568} y={286} textAnchor="middle" fontSize={9} fill="var(--ink-2)">flight computer</text>
+      <text x={568} y={302} textAnchor="middle" fontSize={9} fill="var(--ink-2)">valve · igniter ctrl</text>
       {/* sensor/control dashed lines */}
-      <g stroke="#b06fb0" strokeWidth={1.3} strokeDasharray="4 3" fill="none">
+      <g stroke="var(--violet)" strokeWidth={1.3} strokeDasharray="4 3" fill="none">
         <path d="M 520 262 L 234 165" />
         <path d="M 520 275 L 462 160" />
         <path d="M 520 305 L 344 340" />
       </g>
-      <text x={352} y={352} fontSize={9} fill="#b06fb0">igniter</text>
-      <circle cx={320} cy={344} r={3} fill="#d14" />
+      <text x={352} y={352} fontSize={9} fill="var(--violet)">igniter</text>
+      <circle cx={320} cy={344} r={3} fill="var(--violet)" />
     </svg>
   );
 }

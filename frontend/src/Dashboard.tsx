@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useSharedState } from "./sharedState";
 import { Area, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useEngineStore } from "./store";
 import { engineProfile, exportStl, exportDxf, exportStep } from "./exporters";
@@ -59,21 +60,21 @@ export function Dashboard() {
         <legend>Nozzle profile — radius &amp; Mach along the axis</legend>
         <ResponsiveContainer width="100%" height={240}>
           <ComposedChart data={profileData} margin={{ top: 8, right: 16, bottom: 6, left: 0 }}>
-            <CartesianGrid stroke="#dcdce2" strokeDasharray="3 3" />
-            <XAxis dataKey="x" stroke="#6b7280" tick={{ fill: "#6b7280", fontSize: 12 }} label={{ value: "axial x (mm)", position: "insideBottom", offset: -4, fill: "#6b7280" }} />
-            <YAxis yAxisId="r" stroke="#3574e0" tick={{ fill: "#6b7280", fontSize: 12 }} label={{ value: "radius (mm)", angle: -90, position: "insideLeft", fill: "#3574e0" }} />
-            <YAxis yAxisId="m" orientation="right" stroke="#c23b34" tick={{ fill: "#6b7280", fontSize: 12 }} label={{ value: "Mach", angle: 90, position: "insideRight", fill: "#c23b34" }} />
-            <Tooltip contentStyle={{ background: "#fff", border: "1px solid #b9bcc4", borderRadius: 4, fontSize: 12 }} />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Area yAxisId="r" type="monotone" dataKey="r" name="radius (mm)" stroke="#3574e0" fill="#3574e0" fillOpacity={0.14} />
-            <Line yAxisId="m" type="monotone" dataKey="M" name="Mach" stroke="#c23b34" dot={false} strokeWidth={2} />
+            <CartesianGrid stroke="var(--line)" strokeDasharray="3 3" />
+            <XAxis type="number" dataKey="x" domain={["dataMin", "dataMax"]} stroke="var(--ink-3)" tick={{ fill: "var(--ink-3)", fontSize: 12 }} tickFormatter={(v) => `${Math.round(v)}`} height={40} label={{ value: "axial x (mm)", position: "insideBottom", offset: 0, fill: "var(--ink-3)" }} />
+            <YAxis yAxisId="r" stroke="var(--cyan)" tick={{ fill: "var(--ink-3)", fontSize: 12 }} label={{ value: "radius (mm)", angle: -90, position: "insideLeft", fill: "var(--cyan)" }} />
+            <YAxis yAxisId="m" orientation="right" stroke="var(--violet)" tick={{ fill: "var(--ink-3)", fontSize: 12 }} label={{ value: "Mach", angle: 90, position: "insideRight", fill: "var(--violet)" }} />
+            <Tooltip contentStyle={{ background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: 4, fontSize: 12 }} />
+            <Legend verticalAlign="top" height={24} wrapperStyle={{ fontSize: 12 }} />
+            <Area yAxisId="r" type="monotone" dataKey="r" name="radius (mm)" stroke="var(--cyan)" fill="var(--cyan)" fillOpacity={0.14} />
+            <Line yAxisId="m" type="monotone" dataKey="M" name="Mach" stroke="var(--violet)" dot={false} strokeWidth={2} />
           </ComposedChart>
         </ResponsiveContainer>
       </fieldset>
 
       {l1 && l2 && <StationConditions l0={l0} l1={l1} l2={l2} pc={design?.operating_point.chamber_pressure ?? 0} />}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 12 }}>
         <fieldset className="qt-groupbox">
           <legend>CAD export</legend>
           <p className="muted">Export the engine geometry for CAD, CFD or 3D printing.</p>
@@ -121,7 +122,7 @@ function StationConditions({ l0, l1, l2, pc }: { l0: L0ResultDto; l1: L1ResultDt
   const species = [...l1.species_mol].filter(([, x]) => x > 0.0005).sort((a, b) => b[1] - a[1]);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 12, alignItems: "start" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 12, alignItems: "start" }}>
       <fieldset className="qt-groupbox">
         <legend>Station conditions (γ = {g.toFixed(3)}, cp = {cp.toFixed(0)} J/kg·K, R = {R.toFixed(0)} J/kg·K)</legend>
         <table className="qt-proptable">
@@ -154,8 +155,8 @@ function StationConditions({ l0, l1, l2, pc }: { l0: L0ResultDto; l1: L1ResultDt
           species.map(([name, x]) => (
             <div key={name} className="qt-field" style={{ padding: "2px 0" }}>
               <span style={{ minWidth: 46 }}>{name}</span>
-              <span style={{ flex: 1, margin: "0 8px", height: 8, background: "#e7eaef", borderRadius: 3, overflow: "hidden" }}>
-                <span style={{ display: "block", width: `${Math.min(100, x * 100)}%`, height: "100%", background: "#3574e0" }} />
+              <span style={{ flex: 1, margin: "0 8px", height: 8, background: "var(--bg-3)", borderRadius: 3, overflow: "hidden" }}>
+                <span style={{ display: "block", width: `${Math.min(100, x * 100)}%`, height: "100%", background: "var(--cyan)" }} />
               </span>
               <b style={{ minWidth: 52, textAlign: "right" }}>{(x * 100).toFixed(1)}%</b>
             </div>
@@ -187,11 +188,11 @@ const TEMP_TO_K: Record<string, (v: number) => number> = { K: (v) => v, "°C": (
 const TEMP_FROM_K: Record<string, (v: number) => number> = { K: (v) => v, "°C": (v) => v - 273.15, "°F": (v) => ((v - 273.15) * 9) / 5 + 32, "°R": (v) => (v * 9) / 5 };
 
 function UnitConverter() {
-  const [quantity, setQuantity] = useState("Pressure");
+  const [quantity, setQuantity] = useSharedState("conv.quantity", "Pressure");
   const units = Object.keys(UNITS[quantity]);
-  const [from, setFrom] = useState(units[0]);
-  const [to, setTo] = useState(units[1]);
-  const [value, setValue] = useState(1);
+  const [from, setFrom] = useSharedState("conv.from." + quantity, units[0]);
+  const [to, setTo] = useSharedState("conv.to." + quantity, units[1]);
+  const [value, setValue] = useSharedState("conv.value", 1);
 
   const validFrom = UNITS[quantity][from] ? from : units[0];
   const validTo = UNITS[quantity][to] ? to : units[1];
@@ -228,9 +229,9 @@ function UnitConverter() {
 
 // ---- Test-data validation --------------------------------------------------
 function Validation({ predictedThrustN, predictedIsp, predictedPcBar }: { predictedThrustN: number; predictedIsp: number; predictedPcBar: number }) {
-  const [mThrust, setMThrust] = useState(predictedThrustN * 0.96);
-  const [mIsp, setMIsp] = useState(predictedIsp * 0.97);
-  const [mPc, setMPc] = useState(predictedPcBar * 0.98);
+  const [mThrust, setMThrust] = useSharedState("val.thrust", predictedThrustN * 0.96);
+  const [mIsp, setMIsp] = useSharedState("val.isp", predictedIsp * 0.97);
+  const [mPc, setMPc] = useSharedState("val.pc", predictedPcBar * 0.98);
 
   const row = (label: string, predicted: number, measured: number, unit: string) => {
     const err = predicted !== 0 ? ((measured - predicted) / predicted) * 100 : 0;

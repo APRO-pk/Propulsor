@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-14T00:00:00Z",
+  "title": "Design System: Propulsor",
+  "extensions": {
+    "colorMeta": {
+      "steel-blue": { "role": "primary", "displayName": "Steel Blue", "canonical": "#78a9e6", "tonalRamp": ["#14243a", "#1f3a5e", "#2c5385", "#3b6aa8", "#5689cc", "#78a9e6", "#9cc2ef", "#c4dbf6"] },
+      "steel-blue-light": { "role": "primary", "displayName": "Steel Blue Light", "canonical": "#a9c8f0" },
+      "on-solid": { "role": "neutral", "displayName": "Ink on Solid", "canonical": "#0d1118" },
+      "heat": { "role": "tertiary", "displayName": "Hot Gas", "canonical": "#ff7a2e", "tonalRamp": ["#3a1406", "#6b250a", "#a3380e", "#d65318", "#ff7a2e", "#ff9a52", "#ffb066", "#ffe9cf"] },
+      "heat-2": { "role": "tertiary", "displayName": "Plume Amber", "canonical": "#ffb066" },
+      "heat-3": { "role": "tertiary", "displayName": "Plume Core", "canonical": "#ffe9cf" },
+      "stage-black": { "role": "neutral", "displayName": "Stage Black", "canonical": "#0d0e10", "tonalRamp": ["#0d0e10", "#121417", "#181a1e", "#1f2227", "#272b31", "#2a2e35", "#3d424a", "#4d535c"] },
+      "graphite-ground": { "role": "neutral", "displayName": "Graphite Ground", "canonical": "#121417" },
+      "graphite-panel": { "role": "neutral", "displayName": "Graphite Panel", "canonical": "#181a1e" },
+      "graphite-raised": { "role": "neutral", "displayName": "Graphite Raised", "canonical": "#1f2227" },
+      "graphite-pressed": { "role": "neutral", "displayName": "Graphite Pressed", "canonical": "#272b31" },
+      "field-well": { "role": "neutral", "displayName": "Field Well", "canonical": "#0f1114" },
+      "rule": { "role": "neutral", "displayName": "Rule", "canonical": "#2a2e35" },
+      "rule-strong": { "role": "neutral", "displayName": "Rule Strong", "canonical": "#3d424a" },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#e9ebee", "tonalRamp": ["#4d535c", "#6b727b", "#7b828c", "#8f959e", "#a4aab2", "#b8bdc5", "#d0d4d9", "#e9ebee"] },
+      "ink-2": { "role": "neutral", "displayName": "Ink 2 (labels)", "canonical": "#b8bdc5" },
+      "ink-3": { "role": "neutral", "displayName": "Ink 3 (secondary)", "canonical": "#8f959e" },
+      "ink-faint": { "role": "neutral", "displayName": "Ink Faint", "canonical": "#7b828c" },
+      "ok": { "role": "state", "displayName": "Pass Green", "canonical": "#5fbf8b", "tonalRamp": ["#0f2a1c", "#174330", "#205d42", "#2c7a57", "#3f9a6f", "#5fbf8b", "#8ad4ab", "#c3ead3"] },
+      "warn": { "role": "state", "displayName": "Warn Amber", "canonical": "#d9b45a", "tonalRamp": ["#2e240b", "#4a3a13", "#67521c", "#866b27", "#ad8b3a", "#d9b45a", "#e6cb8a", "#f3e5c2"] },
+      "fail": { "role": "state", "displayName": "Fail Red", "canonical": "#e5636a", "tonalRamp": ["#33100f", "#561a1c", "#7a252a", "#a1333a", "#c8484f", "#e5636a", "#ee9196", "#f7c7ca"] },
+      "series-violet": { "role": "data", "displayName": "Series Violet", "canonical": "#a99be6" },
+      "oxidiser": { "role": "data", "displayName": "Oxidiser Blue", "canonical": "#8fb4e8" },
+      "fuel": { "role": "data", "displayName": "Fuel Amber", "canonical": "#e0b062" },
+      "sheet-black": { "role": "sheet", "displayName": "Sheet Black", "canonical": "#050505", "tonalRamp": ["#050505", "#0d0d0d", "#2a2a2a", "#5a5a5a", "#6e6e6e", "#9a9a9a", "#bdbdbd", "#f2f2f2"] },
+      "sheet-ink": { "role": "sheet", "displayName": "Sheet Ink", "canonical": "#f2f2f2" },
+      "sheet-grey": { "role": "sheet", "displayName": "Sheet Grey", "canonical": "#bdbdbd" },
+      "sheet-faded": { "role": "sheet", "displayName": "Sheet Faded (imperial)", "canonical": "#6e6e6e" },
+      "sheet-rule": { "role": "sheet", "displayName": "Sheet Rule", "canonical": "#5a5a5a" }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "Drilled part title and full-window view titles." },
+      "title": { "displayName": "Title", "purpose": "Results window and dialog headers, design name, selected tree row." },
+      "body": { "displayName": "Body", "purpose": "Labels, values and buttons; values at 600 in ink." },
+      "caption": { "displayName": "Caption", "purpose": "Part descriptions, readout keys, status line." },
+      "label": { "displayName": "Group label", "purpose": "Uppercase legend naming the fieldset or figure it sits on; never an eyebrow above a headline." },
+      "readout": { "displayName": "Readout", "purpose": "Outcome headline numbers." },
+      "sheet-display": { "displayName": "Sheet display", "purpose": "Spec sheet title block only." },
+      "sheet-cap": { "displayName": "Sheet cap", "purpose": "Spec sheet column heads and leader numbers." },
+      "sheet-stat": { "displayName": "Sheet stat", "purpose": "Spec sheet metric figures over faded imperial." }
+    },
+    "sceneMeta": {
+      "source": "frontend/src/theme.ts (SCENE)",
+      "background": "#141619",
+      "metal": ["#cfd5dd", "#9aa3ae", "#7d8691"],
+      "linework": "#d7dce3",
+      "selection": "#78a9e6",
+      "rimHot": "#ffb066",
+      "streamline": "#c9dcf3",
+      "sheetMetal": "#e4e4e4",
+      "note": "three.js cannot read CSS variables; SCENE mirrors styles.css. Main viewport is transparent over the CSS stage gradient."
+    },
+    "sweepRamp": ["#c4dbf6", "#9cc2ef", "#78a9e6", "#5689cc", "#3b6aa8"],
+    "shadows": [
+      { "name": "floating-window", "value": "0 18px 44px rgba(0,0,0,0.5)", "purpose": "Results window over the stage." },
+      { "name": "dialog", "value": "0 24px 60px rgba(0,0,0,0.55)", "purpose": "Help and overlay dialogs." },
+      { "name": "focus-halo", "value": "0 0 0 2px rgba(120,169,230,0.14)", "purpose": "Focused input or select, with an accent border." },
+      { "name": "annotation-legibility", "value": "text-shadow: 0 1px 3px rgba(0,0,0,0.8)", "purpose": "Dimension labels drawn over the 3D render." }
+    ],
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Panel and window movement." },
+      { "name": "control-state", "value": "0.12s", "purpose": "Background, border and colour changes on buttons and fields." },
+      { "name": "solve-spin", "value": "spin 0.9s linear infinite (2.4s under reduced motion)", "purpose": "Solve icon while solving." },
+      { "name": "render-on-demand", "value": "frameloop demand; always only while animating", "purpose": "Always-on WebGL stays idle unless something moves; reduced motion respected." }
+    ],
+    "breakpoints": [
+      { "name": "wide", "value": ">1279px", "note": "left panel 340px, inputs 108px, unit slot 52px, selects 164px" },
+      { "name": "medium", "value": "≤1279px", "note": "left panel 320px, left-panel inputs 92px, unit slot 48px, selects 144px, short top-bar labels" },
+      { "name": "compact", "value": "≤1099px", "note": "left panel 300px, icon-only top bar, no spec in identity, no section inset, Contour single column" },
+      { "name": "stage-narrow", "value": "@container stage ≤860px", "note": "section inset moves to bottom" },
+      { "name": "stage-tiny", "value": "@container stage ≤520px", "note": "inset, toggles, legend, hint and annotations hidden" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Solve Button",
+      "kind": "button",
+      "refersTo": "button-solve",
+      "description": "The single solid accent action; top bar and Requirements window footer.",
+      "html": "<button class=\"ds-solve\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M13 8a5 5 0 1 1-1.5-3.5M13 2.5V5h-2.5\"/></svg>Solve</button>",
+      "css": ".ds-solve { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 13px; font: 700 13px var(--font-ui, 'Sofia Sans Variable', system-ui, sans-serif); color: #0d1118; background: #78a9e6; border: 0; border-radius: 5px; cursor: pointer; transition: background-color 0.12s; } .ds-solve:hover { background: #a9c8f0; } .ds-solve:focus-visible { outline: 2px solid #78a9e6; outline-offset: 2px; }"
+    },
+    {
+      "name": "Top Bar Action",
+      "kind": "button",
+      "refersTo": "button-action",
+      "description": "Quiet text-and-icon action in the top bar (Requirements, New, Open, Save).",
+      "html": "<button class=\"ds-act\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.4\"><path d=\"M4 2h6l3 3v9H4z\"/></svg>New</button>",
+      "css": ".ds-act { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; font: 500 13px 'Sofia Sans Variable', system-ui, sans-serif; color: #b8bdc5; background: transparent; border: 0; border-radius: 5px; cursor: pointer; transition: background-color 0.12s, color 0.12s; } .ds-act:hover { color: #e9ebee; background: #272b31; } .ds-act:focus-visible { outline: 2px solid #78a9e6; outline-offset: 2px; }"
+    },
+    {
+      "name": "Tool Button",
+      "kind": "button",
+      "refersTo": "button-tool",
+      "description": "Bordered panel button; pressed state takes the accent tint (Show/Hide results).",
+      "html": "<button class=\"ds-tool\">Show results</button> <button class=\"ds-tool on\" aria-pressed=\"true\">Hide results</button>",
+      "css": ".ds-tool { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 11px; font: 500 13px 'Sofia Sans Variable', system-ui, sans-serif; color: #e9ebee; background: #1f2227; border: 1px solid #3d424a; border-radius: 5px; cursor: pointer; transition: background-color 0.12s, border-color 0.12s; } .ds-tool:hover { background: #272b31; } .ds-tool.on { background: rgba(120,169,230,0.14); border-color: rgba(120,169,230,0.6); } .ds-tool:focus-visible { outline: 2px solid #78a9e6; outline-offset: 2px; }"
+    },
+    {
+      "name": "Field Row",
+      "kind": "input",
+      "refersTo": "input-number",
+      "description": "Label, 108px right-aligned value, 52px unit slot; custom-value dot rides the label's last word.",
+      "html": "<div class=\"ds-field\"><span>Channel <span class=\"ds-nowrap\">width<i class=\"ds-custom\"></i></span></span><span class=\"ds-vals\"><input type=\"text\" value=\"0.8\"><select class=\"ds-unit\"><option>mm</option></select></span></div><div class=\"ds-field\"><span>Wall material</span><select class=\"ds-choice\"><option>CuCrZr</option></select></div>",
+      "css": ".ds-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 30px; padding: 2px 0; width: 300px; font: 400 13px 'Sofia Sans Variable', system-ui, sans-serif; color: #b8bdc5; background: #181a1e; } .ds-field > span:first-child { text-wrap: balance; } .ds-nowrap { white-space: nowrap; } .ds-custom { display: inline-block; width: 5px; height: 5px; margin: 0 0 1px 6px; border-radius: 50%; background: #78a9e6; vertical-align: middle; } .ds-vals { display: flex; gap: 4px; } .ds-field input, .ds-field select { height: 26px; font: 500 13px 'Sofia Sans Variable', system-ui, sans-serif; font-variant-numeric: tabular-nums; color: #e9ebee; background: #0f1114; border: 1px solid #3d424a; border-radius: 4px; padding: 0 8px; transition: border-color 0.12s, box-shadow 0.12s; } .ds-field input { width: 108px; text-align: right; } .ds-unit { width: 52px; color: #b8bdc5; padding: 0 6px; } .ds-choice { width: 164px; } .ds-field input:hover, .ds-field select:hover { border-color: #4d535c; } .ds-field input:focus, .ds-field select:focus { outline: none; border-color: #78a9e6; box-shadow: 0 0 0 2px rgba(120,169,230,0.14); }"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "nav",
+      "refersTo": "segmented-pressed",
+      "description": "Display modes on the stage and the readout-units toggle.",
+      "html": "<div class=\"ds-seg\" role=\"group\"><button>Shaded</button><button aria-pressed=\"true\">Hot gas</button><button>Stress</button><button>Flow</button><button>Spec sheet</button></div>",
+      "css": ".ds-seg { display: inline-flex; border: 1px solid #3d424a; border-radius: 5px; overflow: hidden; } .ds-seg button { padding: 3px 9px; font: 500 12px 'Sofia Sans Variable', system-ui, sans-serif; color: #8f959e; background: none; border: 0; cursor: pointer; } .ds-seg button + button { border-left: 1px solid #3d424a; } .ds-seg button:hover { color: #e9ebee; } .ds-seg button[aria-pressed=\"true\"] { color: #e9ebee; background: #272b31; } .ds-seg button:focus-visible { outline: 2px solid #78a9e6; outline-offset: -2px; }"
+    },
+    {
+      "name": "Feature Tree Row",
+      "kind": "nav",
+      "refersTo": "tree-row",
+      "description": "28px tree rows with status dots; selected row gets the accent tint and a 2px bar.",
+      "html": "<ul class=\"ds-tree\"><li><div class=\"ds-ti\"><i class=\"ds-dot ok\"></i>Thrust chamber</div></li><li aria-selected=\"true\"><div class=\"ds-ti\" style=\"--lvl:1\"><i class=\"ds-dot ok\"></i>Cooling jacket</div></li><li><div class=\"ds-ti\" style=\"--lvl:1\"><i class=\"ds-dot fail\"></i>Injector &amp; structure</div></li></ul>",
+      "css": ".ds-tree { list-style: none; margin: 0; padding: 4px 0; width: 300px; background: #181a1e; font: 400 13px 'Sofia Sans Variable', system-ui, sans-serif; } .ds-ti { position: relative; display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px 0 calc(8px + var(--lvl, 0) * 18px); color: #b8bdc5; cursor: pointer; } .ds-ti:hover { color: #e9ebee; background: #1f2227; } [aria-selected=\"true\"] > .ds-ti { color: #e9ebee; font-weight: 600; background: rgba(120,169,230,0.14); } [aria-selected=\"true\"] > .ds-ti::before { content: \"\"; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; border-radius: 0 2px 2px 0; background: #78a9e6; } .ds-dot { width: 7px; height: 7px; border-radius: 50%; } .ds-dot.ok { background: #5fbf8b; } .ds-dot.fail { background: #e5636a; }"
+    },
+    {
+      "name": "Outcome Strip",
+      "kind": "card",
+      "refersTo": "readout",
+      "description": "A part's headline numbers pinned at the foot of the left panel.",
+      "html": "<section class=\"ds-outcome\"><h2>Outcome</h2><div class=\"ds-big\"><div><div class=\"n\">444<small>K</small></div><div class=\"k\">Peak wall, limit 750 K</div></div><div><div class=\"n\">35.8<small>bar</small></div><div class=\"k\">Coolant Δp</div></div></div><div class=\"ds-kv\"><span>Thermal margin</span><b class=\"ok\">306 K</b></div></section>",
+      "css": ".ds-outcome { width: 300px; padding: 10px 14px 12px; background: #181a1e; border-top: 1px solid #2a2e35; font: 400 13px 'Sofia Sans Variable', system-ui, sans-serif; font-variant-numeric: tabular-nums; color: #b8bdc5; } .ds-outcome h2 { margin: 0 0 6px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8f959e; } .ds-big { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-bottom: 6px; } .ds-big .n { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; color: #e9ebee; } .ds-big small { margin-left: 3px; font-size: 12.5px; font-weight: 500; color: #8f959e; } .ds-big .k { font-size: 12px; color: #8f959e; } .ds-kv { display: flex; justify-content: space-between; min-height: 26px; align-items: center; border-bottom: 1px solid #2a2e35; } .ds-kv b { font-weight: 600; color: #e9ebee; } .ds-kv b.ok { color: #5fbf8b; }"
+    },
+    {
+      "name": "Results Window",
+      "kind": "custom",
+      "refersTo": "results-window",
+      "description": "Non-modal, draggable, resizable window docked top-right over the stage.",
+      "html": "<div class=\"ds-win\"><div class=\"ds-win-head\"><h2>Cooling jacket — results</h2><button aria-label=\"Close\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 12 12\" stroke=\"currentColor\" stroke-width=\"1.4\"><path d=\"M2 2l8 8M10 2l-8 8\"/></svg></button></div><div class=\"ds-win-body\"><div class=\"ds-row\"><span>Max wall temperature</span><b>444 K</b></div><div class=\"ds-row\"><span>Material limit</span><b>750 K</b></div></div></div>",
+      "css": ".ds-win { width: 380px; background: rgba(24,26,30,0.97); border: 1px solid #3d424a; border-radius: 8px; box-shadow: 0 18px 44px rgba(0,0,0,0.5); overflow: hidden; font: 400 13px 'Sofia Sans Variable', system-ui, sans-serif; color: #b8bdc5; } .ds-win-head { display: flex; align-items: center; justify-content: space-between; height: 36px; padding: 0 6px 0 14px; border-bottom: 1px solid #2a2e35; cursor: grab; } .ds-win-head h2 { margin: 0; font-size: 13px; font-weight: 600; color: #e9ebee; } .ds-win-head button { width: 26px; height: 26px; display: grid; place-items: center; color: #b8bdc5; background: none; border: 0; border-radius: 5px; cursor: pointer; } .ds-win-head button:hover { color: #e9ebee; background: #272b31; } .ds-win-body { padding: 10px 14px; } .ds-row { display: flex; justify-content: space-between; min-height: 30px; align-items: center; } .ds-row b { font-weight: 600; color: #e9ebee; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Spec Sheet Stat",
+      "kind": "custom",
+      "refersTo": "sheet-stat",
+      "description": "Spec sheet overview figure: metric in sheet ink over imperial faded.",
+      "html": "<div class=\"ds-ss\"><div class=\"k\">Thrust</div><div class=\"v\">25.0<small>kN</small></div><div class=\"i\">5,620<small>lbf</small></div></div>",
+      "css": ".ds-ss { width: 170px; padding: 16px; background: #050505; color: #f2f2f2; font-family: 'Archivo Variable', 'Sofia Sans Variable', system-ui, sans-serif; font-variant-numeric: tabular-nums; } .ds-ss .k { padding-bottom: 6px; border-bottom: 1px solid #5a5a5a; font-size: 12px; color: #bdbdbd; } .ds-ss .v { margin-top: 6px; font-size: 24px; letter-spacing: -0.01em; } .ds-ss .i { font-size: 19px; color: #6e6e6e; } .ds-ss small { margin-left: 4px; font-size: 11px; color: #9a9a9a; } .ds-ss .i small { color: #6e6e6e; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Workbench",
+    "overview": "A CAD workbench where the engine never leaves the screen. Graphite chrome, hairline rules and small, dense type frame one live 3D engine; the only intensity in the product is inside that viewport, where hot gas and the plume burn orange-white. Everything outside the stage is instrument: tabular numbers, aligned value columns, one steel-blue accent for what is selected, focused, or about to be solved.\n\nThe same engine has a second register. One key turns it into the Spec sheet: a pure-black presentation board, monochrome render, expanded Archivo headings, hairline leaders, metric figures over faded imperial. It is a separate world with its own palette and face, used only for that mode.\n\nDensity is high and desktop-first (900×640 up to wide). Panels are flat, separated by 1px rules rather than cards. Confirmed rejections: the neon blueprint HUD with glows, grids and brackets on every panel; the rounded-card SaaS dashboard; the grey Qt workbench.",
+    "keyCharacteristics": [
+      "Two panels only: a left drill-in panel and the stage; no right inspector.",
+      "Bold only in the 3D viewport; chrome stays calm graphite.",
+      "One accent (steel blue) for selection, focus and Solve.",
+      "Status colours mean pass, warn or fail and nothing else.",
+      "Tabular numerals everywhere; inputs share one value column.",
+      "Spec sheet is a distinct monochrome board, not a theme of the workbench."
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "Steel blue marks selection, focus and Solve. If it is not one of those, it is not blue.", "section": "colors" },
+      { "name": "The Heat Stays Inside Rule", "body": "Orange appears only where the engine is hot: the viewport's gas, plume and rim light, and the legend that reads them.", "section": "colors" },
+      { "name": "The Status Means Status Rule", "body": "Green, amber and red report pass, warn and fail. Ordered series take the single-hue accent ramp; never a red-to-green scale.", "section": "colors" },
+      { "name": "The Tabular Rule", "body": "Every number aligns: tabular numerals on body, inputs and drawings.", "section": "typography" },
+      { "name": "The Second Face Rule", "body": "Archivo appears only on the Spec sheet. The workbench is Sofia Sans throughout.", "section": "typography" },
+      { "name": "The No Glow Rule", "body": "No glows, neon edges or coloured shadows anywhere in the chrome. Depth is tone, rule, and a single dark drop under floating windows.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep heat colour inside the 3D viewport and its legend.",
+      "Do use steel blue only for selection, focus and Solve.",
+      "Do put new subsystem inputs in the shared field rhythm (108px value column, 52px unit slot, 164px selects) so the column lines up.",
+      "Do mark every row of a new view so the runtime Inputs/Results split can route it; keep inline `display` off rows where possible.",
+      "Do draw sections with non-scaling hairlines and accent only on the selected zone.",
+      "Do use the single-hue accent ramp for ordered series.",
+      "Do self-host fonts; the app runs offline."
+    ],
+    "donts": [
+      "Don't add a right-hand inspector or a third panel; results go in the floating Results window.",
+      "Don't add glows, neon, grid backgrounds or corner brackets to panels.",
+      "Don't wrap panel content in rounded cards; separate with 1px rules.",
+      "Don't use green, amber or red for anything but pass, warn and fail.",
+      "Don't use Archivo or pure black outside the Spec sheet.",
+      "Don't fill a selected 3D part with accent; outline it."
+    ]
+  }
+}
