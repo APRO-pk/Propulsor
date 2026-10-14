@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Propulsor — spec sheet sketch</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#050505;--ink:#f2f2f2;--ink-2:#bdbdbd;--ink-3:#7a7a7a;--faint:#3c3c3c;--rule:#5a5a5a}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;background:var(--bg);color:var(--ink);font-family:"Archivo",sans-serif;font-variant-numeric:tabular-nums;position:relative}
+.wide{font-stretch:125%;font-weight:800;letter-spacing:-.005em}
+.cap{font-stretch:125%;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.sheet{position:absolute;inset:0;padding:30px 64px 0}
+
+/* running head */
+.head{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:14px;border-bottom:1px solid var(--rule)}
+.head .cap{font-size:15px;letter-spacing:.04em}
+
+/* title block */
+.titleblock{display:grid;grid-template-columns:1fr 470px;gap:40px;margin-top:22px}
+h1{font-size:40px;line-height:1.02;white-space:nowrap}
+.sub{font-size:12px;color:var(--ink-2);margin-top:6px}
+.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;padding-top:6px}
+.meta div p{font-size:11.5px;color:var(--ink-2);margin-top:6px;line-height:1.45}
+.abstract{grid-column:1;max-width:430px;margin-top:14px;padding-top:10px;border-top:1px solid var(--rule);font-size:11.5px;line-height:1.55;color:var(--ink-2)}
+
+/* figure */
+.fig{position:absolute;left:0;top:262px;width:1440px;height:370px}
+.lbl{position:absolute;font-stretch:125%;font-weight:700;font-size:11px;letter-spacing:.06em}
+
+/* legend + overview */
+.legend{position:absolute;left:64px;right:64px;top:676px;display:grid;grid-template-columns:repeat(6,1fr);gap:24px}
+.legend p{font-size:11.5px;color:var(--ink-2);margin-top:6px;line-height:1.4}
+.over{position:absolute;left:64px;right:64px;top:758px}
+.over .cap{margin-bottom:12px}
+.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:24px}
+.stats .k{font-size:12px;color:var(--ink-2);padding-bottom:6px;border-bottom:1px solid var(--rule)}
+.stats .v{font-size:26px;font-weight:400;margin-top:8px;letter-spacing:-.01em}
+.stats .v small{font-size:11px;color:var(--ink-2);margin-left:4px;letter-spacing:0}
+.stats .i{font-size:22px;color:var(--faint);margin-top:2px}
+.stats .i small{font-size:11px;margin-left:4px}
+
+/* app controls, kept out of the composition */
+.ctl{position:absolute;right:64px;top:30px;display:none}
+.bar{position:absolute;right:170px;top:24px;display:flex;gap:6px}
+.bar span{font-size:12px;color:var(--ink-2);border:1px solid #2a2a2a;border-radius:5px;padding:5px 10px;background:#0d0d0d}
+.bar span.on{color:var(--ink);border-color:#444}
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="head"><span class="cap">Engine specification</span><span class="cap">Rev 16</span></div>
+
+  <div class="titleblock">
+    <div>
+      <h1 class="wide">LOX / methane thrust chamber</h1>
+      <div class="sub">Untitled design · Propulsor</div>
+      <p class="abstract">A 25 kN liquid-oxygen / methane thrust chamber at 60 bar chamber pressure and O/F 3.40. The CuCrZr liner is regeneratively cooled by the fuel through 80 milled channels at 120 bar; a bell nozzle expands the flow to an area ratio of 4.00.</p>
+    </div>
+    <div class="meta">
+      <div><span class="cap">Propellant</span><p>Liquid oxygen<br>Liquid methane</p></div>
+      <div><span class="cap">Cooling</span><p>Regenerative<br>CuCrZr liner</p></div>
+      <div><span class="cap">Contour</span><p>Rao bell<br>ε 4.00</p></div>
+      <div><span class="cap">Fidelity</span><p>L0–L5 solved<br>1 failed check</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- figure: monochrome render with numbered callouts -->
+<svg class="fig" viewBox="0 0 1440 370">
+  <defs>
+    <linearGradient id="cyl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a3a3a"/><stop offset=".12" stop-color="#cfcfcf"/><stop offset=".3" stop-color="#f7f7f7"/><stop offset=".55" stop-color="#a9a9a9"/><stop offset=".85" stop-color="#4a4a4a"/><stop offset="1" stop-color="#1c1c1c"/>
+    </linearGradient>
+    <linearGradient id="cylDark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a2a2a"/><stop offset=".3" stop-color="#bdbdbd"/><stop offset=".55" stop-color="#7c7c7c"/><stop offset="1" stop-color="#151515"/>
+    </linearGradient>
+    <linearGradient id="inside" x1="0" x2="1"><stop offset="0" stop-color="#0c0c0c"/><stop offset="1" stop-color="#3a3a3a"/></linearGradient>
+    <radialGradient id="dome" cx=".7" cy=".3" r=".9"><stop offset="0" stop-color="#f4f4f4"/><stop offset=".5" stop-color="#9c9c9c"/><stop offset="1" stop-color="#1e1e1e"/></radialGradient>
+    <linearGradient id="pipeV" x1="0" x2="1"><stop offset="0" stop-color="#2a2a2a"/><stop offset=".35" stop-color="#d6d6d6"/><stop offset="1" stop-color="#1c1c1c"/></linearGradient>
+    <pattern id="chan" width="6" height="200" patternUnits="userSpaceOnUse"><path d="M0 0V200" stroke="#000" stroke-opacity=".18"/></pattern>
+  </defs>
+
+  <!-- oxidiser inlet (axial) -->
+  <rect x="300" y="174" width="88" height="22" fill="url(#cyl)"/>
+  <rect x="292" y="168" width="12" height="34" rx="2" fill="url(#cyl)"/>
+  <!-- injector dome + flange -->
+  <path d="M388 120C430 120 448 140 452 185C448 230 430 250 388 250Z" fill="url(#dome)"/>
+  <rect x="448" y="104" width="14" height="162" rx="2" fill="url(#cyl)"/>
+  <g fill="#1a1a1a"><circle cx="455" cy="114" r="2.2"/><circle cx="455" cy="140" r="2.2"/><circle cx="455" cy="166" r="2.2"/><circle cx="455" cy="204" r="2.2"/><circle cx="455" cy="230" r="2.2"/><circle cx="455" cy="256" r="2.2"/></g>
+  <!-- fuel return from jacket to injector -->
+  <path d="M470 106C470 76 500 64 530 64H560" fill="none" stroke="url(#cylDark)" stroke-width="12"/>
+  <path d="M470 106C470 76 500 64 530 64H560" fill="none" stroke="#e0e0e0" stroke-width="2" stroke-opacity=".5"/>
+  <rect x="556" y="56" width="18" height="18" rx="3" fill="url(#cyl)"/>
+
+  <!-- chamber -->
+  <path d="M462 110H720C752 110 770 148 798 150C830 152 870 132 1000 98V272C870 238 830 218 798 220C770 222 752 260 720 260H462Z" fill="url(#cyl)"/>
+  <path d="M462 110H720C752 110 770 148 798 150C830 152 870 132 1000 98V272C870 238 830 218 798 220C770 222 752 260 720 260H462Z" fill="url(#chan)"/>
+  <!-- outlet manifold ring (fuel leaves the jacket here) -->
+  <rect x="548" y="104" width="22" height="162" rx="4" fill="url(#cylDark)"/>
+  <!-- weld seams / stations -->
+  <g stroke="#000" stroke-opacity=".35"><path d="M640 110V260M720 110V260"/></g>
+  <!-- throat ring -->
+  <path d="M790 146C794 146 806 146 808 149V221C806 224 794 224 790 224Z" fill="url(#cylDark)"/>
+  <!-- inlet manifold torus near the exit (fuel enters here) -->
+  <path d="M930 112C944 108 958 104 968 101V269C958 266 944 262 930 258Z" fill="url(#cylDark)"/>
+  <rect x="942" y="266" width="12" height="50" fill="url(#pipeV)"/>
+  <rect x="938" y="314" width="20" height="14" rx="3" fill="url(#cyl)"/>
+  <!-- exit plane -->
+  <ellipse cx="1000" cy="185" rx="16" ry="87" fill="url(#inside)" stroke="#d9d9d9" stroke-width="1.5"/>
+  <ellipse cx="1004" cy="185" rx="10" ry="40" fill="#000" opacity=".6"/>
+  <!-- axis -->
+  <path d="M250 185H1060" stroke="#4a4a4a" stroke-width=".8" stroke-dasharray="16 4 3 4"/>
+
+  <!-- leaders: numbered label rows top and bottom -->
+  <g stroke="#050505" stroke-width="3.5" fill="none" stroke-linejoin="round">
+    <path d="M64 30H190L300 170"/>
+    <path d="M64 78H200L400 140"/>
+    <path d="M1376 30H1180L1000 100"/>
+    <path d="M1376 78H1170L800 152"/>
+    <path d="M64 330H330L560 230"/>
+    <path d="M1376 330H1060L955 300"/>
+  </g>
+  <g stroke="#bdbdbd" stroke-width=".8" fill="none">
+    <path d="M64 30H190L300 170"/>
+    <path d="M64 78H200L400 140"/>
+    <path d="M1376 30H1180L1000 100"/>
+    <path d="M1376 78H1170L800 152"/>
+    <path d="M64 330H330L560 230"/>
+    <path d="M1376 330H1060L955 300"/>
+  </g>
+  <g fill="#f2f2f2" stroke="#050505" stroke-width="1.5"><circle cx="300" cy="170" r="3"/><circle cx="400" cy="140" r="3"/><circle cx="1000" cy="100" r="3"/><circle cx="800" cy="152" r="3"/><circle cx="560" cy="230" r="3"/><circle cx="955" cy="300" r="3"/></g>
+
+  <!-- section brackets -->
+  <g stroke="#8a8a8a" stroke-width="1"><path d="M462 300V352M790 300V352M808 300V352M1000 300V352M462 340H1000"/></g>
+</svg>
+
+<span class="lbl" style="left:64px;top:274px">01</span>
+<span class="lbl" style="left:64px;top:322px">02</span>
+<span class="lbl" style="left:1356px;top:274px">05</span>
+<span class="lbl" style="left:1356px;top:322px">04</span>
+<span class="lbl" style="left:64px;top:574px">03</span>
+<span class="lbl" style="left:1356px;top:574px">06</span>
+<span class="lbl" style="left:468px;top:612px">CHAMBER<br><span style="color:#7a7a7a;font-weight:500">200 mm</span></span>
+<span class="lbl" style="left:799px;top:612px;transform:translateX(-50%);text-align:center">THROAT<br><span style="color:#7a7a7a;font-weight:500">Ø 56.0</span></span>
+<span class="lbl" style="left:880px;top:612px">NOZZLE<br><span style="color:#7a7a7a;font-weight:500">ε 4.00</span></span>
+
+<div class="legend">
+  <div><span class="cap">01</span><p>Oxidiser inlet<br>LOX, axial feed</p></div>
+  <div><span class="cap">02</span><p>Injector head<br>and bolted flange</p></div>
+  <div><span class="cap">03</span><p>Coolant outlet manifold<br>fuel to injector</p></div>
+  <div><span class="cap">04</span><p>Throat<br>Ø 56.0 mm</p></div>
+  <div><span class="cap">05</span><p>Bell nozzle<br>exit Ø 112.0 mm</p></div>
+  <div><span class="cap">06</span><p>Coolant inlet manifold<br>fuel at 120 bar</p></div>
+</div>
+
+<div class="over">
+  <div class="cap">Technical overview</div>
+  <div class="stats">
+    <div><div class="k">Thrust</div><div class="v">25.0<small>kN</small></div><div class="i">5,620<small>lbf</small></div></div>
+    <div><div class="k">Chamber pressure</div><div class="v">60.0<small>bar</small></div><div class="i">870<small>psi</small></div></div>
+    <div><div class="k">Delivered Isp</div><div class="v">283<small>s</small></div><div class="i">2,775<small>m/s</small></div></div>
+    <div><div class="k">Mass flow</div><div class="v">8.79<small>kg/s</small></div><div class="i">19.4<small>lb/s</small></div></div>
+    <div><div class="k">Throat diameter</div><div class="v">56.0<small>mm</small></div><div class="i">2.20<small>in</small></div></div>
+    <div><div class="k">Chamber temperature</div><div class="v">3,400<small>K</small></div><div class="i">5,660<small>°F</small></div></div>
+  </div>
+</div>
+
+<div class="bar"><span>Shaded</span><span>Hot gas</span><span class="on">Spec sheet</span><span>Export PNG</span><span>Exit · Esc</span></div>
+</body>
+</html>

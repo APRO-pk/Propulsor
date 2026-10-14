@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSharedState } from "./sharedState";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
+import { SCENE } from "./theme";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { validationStudy, type SensorValidationDto, type SpatialSensorDto } from "./api";
 import { useEngineStore } from "./store";
 import { downloadText } from "./exporters";
 
-const AXIS = { fill: "#6b7280", fontSize: 11 } as const;
-const TT = { background: "#fff", border: "1px solid #b9bcc4", borderRadius: 4, fontSize: 12 } as const;
+const AXIS = { fill: "var(--ink-3)", fontSize: 11 } as const;
+const TT = { background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: 4, fontSize: 12 } as const;
 
 type TransientRow = { t: number; thrust?: number; pc?: number };
 type Imports = { sensors?: Map<string, number>; transient?: TransientRow[]; sensorMatched?: number; sensorTotal?: number };
@@ -80,7 +82,7 @@ function mergeValidation(base: SensorValidationDto, imp: Imports): SensorValidat
 
 export function Validation() {
   const [base, setBase] = useState<SensorValidationDto | null>(null);
-  const [imp, setImp] = useState<Imports>({});
+  const [imp, setImp] = useSharedState<Imports>("validation.imports", {});
   const sensorFileRef = useRef<HTMLInputElement>(null);
   const transientFileRef = useRef<HTMLInputElement>(null);
   const l2 = useEngineStore((s) => s.l2);
@@ -146,7 +148,7 @@ export function Validation() {
           <div className="qt-field" style={{ minWidth: 200 }}><span>Spatial residual (RMS)</span><span className={`qt-badge ${v.rms_spatial_pct < 5 ? "solved" : "failed"}`}>{v.rms_spatial_pct.toFixed(2)}%</span></div>
           <div className="qt-field" style={{ minWidth: 200 }}><span>Startup thrust residual (RMS)</span><span className={`qt-badge ${v.rms_thrust_pct < 8 ? "solved" : "failed"}`}>{v.rms_thrust_pct.toFixed(2)}%</span></div>
           <div className="qt-field" style={{ minWidth: 180 }}><span>Ignition / rise</span><b>{(v.ignition_delay_s * 1000).toFixed(0)} / {(v.rise_time_s * 1000).toFixed(0)} ms</b></div>
-          <div className="qt-field" style={{ minWidth: 160 }}><span>Data source</span><span className={`qt-badge ${imported ? "solved" : ""}`} style={imported ? undefined : { background: "#b7791f", color: "#fff" }}>{imported ? "imported telemetry" : "synthetic reference"}</span></div>
+          <div className="qt-field" style={{ minWidth: 160 }}><span>Data source</span><span className={`qt-badge ${imported ? "solved" : "caveat"}`}>{imported ? "imported telemetry" : "synthetic reference"}</span></div>
         </div>
         <p className="qt-caption" style={{ marginTop: 4 }}>Pass thresholds: spatial RMS &lt; 5%, startup thrust RMS &lt; 8%, per-sensor residual &lt; 4% (green/red bands use these limits).</p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
@@ -164,7 +166,7 @@ export function Validation() {
         {v.synthetic_reference && <p className="qt-caption">Measured values are a synthetic test-stand reference (deterministic position/time bias). Import a CSV (match the template columns) to validate against real telemetry.</p>}
       </fieldset>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 12, alignItems: "start" }}>
         <fieldset className="qt-groupbox">
           <legend>3D sensor positions</legend>
           <div className="viewer3d" style={{ height: 360, borderRadius: 5, overflow: "hidden" }}>
@@ -177,24 +179,24 @@ export function Validation() {
           <legend>Chamber &amp; nozzle pressure — predicted vs measured</legend>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={pressure.map((s) => ({ x: s.x_m * 1000, predicted: s.predicted / 1e5, measured: s.measured / 1e5 }))} margin={{ top: 6, right: 14, bottom: 4, left: 0 }}>
-              <CartesianGrid stroke="#dcdce2" strokeDasharray="3 3" />
-              <XAxis type="number" dataKey="x" stroke="#6b7280" tick={AXIS} label={{ value: "axial x (mm)", position: "insideBottom", offset: -3, fill: "#6b7280" }} />
-              <YAxis stroke="#6b7280" tick={AXIS} label={{ value: "p (bar)", angle: -90, position: "insideLeft", fill: "#6b7280" }} />
+              <CartesianGrid stroke="var(--line)" strokeDasharray="3 3" />
+              <XAxis type="number" dataKey="x" stroke="var(--ink-3)" tick={AXIS} label={{ value: "axial x (mm)", position: "insideBottom", offset: -3, fill: "var(--ink-3)" }} />
+              <YAxis stroke="var(--ink-3)" tick={AXIS} label={{ value: "p (bar)", angle: -90, position: "insideLeft", fill: "var(--ink-3)" }} />
               <Tooltip contentStyle={TT} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line dataKey="predicted" stroke="#3574e0" dot strokeWidth={2} />
-              <Line dataKey="measured" stroke="#c23b34" strokeDasharray="5 3" dot strokeWidth={2} />
+              <Line dataKey="predicted" stroke="var(--cyan)" dot strokeWidth={2} />
+              <Line dataKey="measured" stroke="var(--violet)" strokeDasharray="5 3" dot strokeWidth={2} />
             </LineChart>
           </ResponsiveContainer>
           <ResponsiveContainer width="100%" height={170}>
             <LineChart data={temps.map((s) => ({ x: s.x_m * 1000, predicted: s.predicted, measured: s.measured }))} margin={{ top: 6, right: 14, bottom: 4, left: 0 }}>
-              <CartesianGrid stroke="#dcdce2" strokeDasharray="3 3" />
-              <XAxis type="number" dataKey="x" stroke="#6b7280" tick={AXIS} label={{ value: "axial x (mm)", position: "insideBottom", offset: -3, fill: "#6b7280" }} />
-              <YAxis stroke="#6b7280" tick={AXIS} label={{ value: "T_wall (K)", angle: -90, position: "insideLeft", fill: "#6b7280" }} />
+              <CartesianGrid stroke="var(--line)" strokeDasharray="3 3" />
+              <XAxis type="number" dataKey="x" stroke="var(--ink-3)" tick={AXIS} label={{ value: "axial x (mm)", position: "insideBottom", offset: -3, fill: "var(--ink-3)" }} />
+              <YAxis stroke="var(--ink-3)" tick={AXIS} label={{ value: "T_wall (K)", angle: -90, position: "insideLeft", fill: "var(--ink-3)" }} />
               <Tooltip contentStyle={TT} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line dataKey="predicted" stroke="#c47b12" dot strokeWidth={2} />
-              <Line dataKey="measured" stroke="#7a5bd0" strokeDasharray="5 3" dot strokeWidth={2} />
+              <Line dataKey="predicted" stroke="var(--cyan)" dot strokeWidth={2} />
+              <Line dataKey="measured" stroke="var(--violet)" strokeDasharray="5 3" dot strokeWidth={2} />
             </LineChart>
           </ResponsiveContainer>
         </fieldset>
@@ -204,15 +206,15 @@ export function Validation() {
         <legend>Startup transient — thrust &amp; chamber pressure vs time</legend>
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={v.time_series.map((t) => ({ t: t.t_s * 1000, predF: t.predicted_thrust_n / 1000, measF: t.measured_thrust_n / 1000, predP: t.predicted_pc_pa / 1e5, measP: t.measured_pc_pa / 1e5 }))} margin={{ top: 6, right: 14, bottom: 4, left: 0 }}>
-            <CartesianGrid stroke="#dcdce2" strokeDasharray="3 3" />
-            <XAxis type="number" dataKey="t" stroke="#6b7280" tick={AXIS} label={{ value: "time (ms)", position: "insideBottom", offset: -3, fill: "#6b7280" }} />
-            <YAxis yAxisId="F" stroke="#6b7280" tick={AXIS} label={{ value: "thrust (kN)", angle: -90, position: "insideLeft", fill: "#6b7280" }} />
-            <YAxis yAxisId="P" orientation="right" stroke="#6b7280" tick={AXIS} label={{ value: "Pc (bar)", angle: 90, position: "insideRight", fill: "#6b7280" }} />
+            <CartesianGrid stroke="var(--line)" strokeDasharray="3 3" />
+            <XAxis type="number" dataKey="t" stroke="var(--ink-3)" tick={AXIS} label={{ value: "time (ms)", position: "insideBottom", offset: -3, fill: "var(--ink-3)" }} />
+            <YAxis yAxisId="F" stroke="var(--ink-3)" tick={AXIS} label={{ value: "thrust (kN)", angle: -90, position: "insideLeft", fill: "var(--ink-3)" }} />
+            <YAxis yAxisId="P" orientation="right" stroke="var(--ink-3)" tick={AXIS} label={{ value: "Pc (bar)", angle: 90, position: "insideRight", fill: "var(--ink-3)" }} />
             <Tooltip contentStyle={TT} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Line yAxisId="F" name="thrust predicted" dataKey="predF" stroke="#3574e0" dot={false} strokeWidth={2} />
-            <Line yAxisId="F" name="thrust measured" dataKey="measF" stroke="#c23b34" strokeDasharray="5 3" dot={false} strokeWidth={2} />
-            <Line yAxisId="P" name="Pc predicted" dataKey="predP" stroke="#2f8f46" dot={false} strokeWidth={1.5} />
+            <Line yAxisId="F" name="thrust predicted" dataKey="predF" stroke="var(--cyan)" dot={false} strokeWidth={2} />
+            <Line yAxisId="F" name="thrust measured" dataKey="measF" stroke="var(--violet)" strokeDasharray="5 3" dot={false} strokeWidth={2} />
+            <Line yAxisId="P" name="Pc predicted" dataKey="predP" stroke="var(--ink-2)" dot={false} strokeWidth={1.5} />
           </LineChart>
         </ResponsiveContainer>
       </fieldset>
@@ -229,7 +231,7 @@ export function Validation() {
                 <td className="val">{(s.x_m * 1000).toFixed(1)}</td>
                 <td className="val">{fmt(s.predicted, s.unit)}</td>
                 <td className="val">{fmt(s.measured, s.unit)}</td>
-                <td className="val" style={{ color: Math.abs(s.residual_pct) > 4 ? "#c23b34" : "#2f8f46" }}>{s.residual_pct >= 0 ? "+" : ""}{s.residual_pct.toFixed(2)}%</td>
+                <td className="val" style={{ color: Math.abs(s.residual_pct) > 4 ? "var(--fail)" : "var(--ok)" }}>{s.residual_pct >= 0 ? "+" : ""}{s.residual_pct.toFixed(2)}%</td>
               </tr>
             ))}
           </tbody>
@@ -262,18 +264,18 @@ function SensorViewer3D({ sensors, stations }: { sensors: SpatialSensorDto[]; st
   const maxRes = Math.max(...sensors.map((s) => Math.abs(s.residual_pct)), 1);
 
   return (
-    <Canvas dpr={[1, 2]} camera={{ position: [cam * 0.7, cam * 0.5, cam], fov: 42, near: 0.001, far: 100 }}>
-      <color attach="background" args={["#3b4046"]} />
-      <hemisphereLight args={["#ffffff", "#33383e", 1.0]} />
+    <Canvas frameloop="demand" dpr={[1, 2]} camera={{ position: [cam * 0.7, cam * 0.5, cam], fov: 42, near: 0.001, far: 100 }}>
+      <color attach="background" args={[SCENE.background]} />
+      <hemisphereLight args={[SCENE.sky, SCENE.ground, 1.0]} />
       <directionalLight position={[cam, cam * 1.4, cam]} intensity={2.0} />
       {/* Lathe revolves around Y; rotate so the engine axis lies along world x. */}
       <group rotation={[0, 0, Math.PI / 2]}>
         <mesh geometry={geo}>
-          <meshStandardMaterial color="#aeb4bd" metalness={0.5} roughness={0.5} side={THREE.DoubleSide} transparent opacity={0.55} />
+          <meshStandardMaterial color={SCENE.metalDark} metalness={0.5} roughness={0.5} side={THREE.DoubleSide} transparent opacity={0.55} />
         </mesh>
         {sensors.map((s) => {
           const size = span * 0.02 * (1 + 1.5 * (Math.abs(s.residual_pct) / maxRes));
-          const color = s.kind === "pressure" ? "#3574e0" : "#c23b34";
+          const color = s.kind === "pressure" ? SCENE.pressure : SCENE.thermal;
           return (
             <mesh key={s.id} position={[Math.max(s.r_m, 1e-3), s.x_m, 0]}>
               <sphereGeometry args={[size, 16, 16]} />

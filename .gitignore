@@ -17,3 +17,6 @@ engines/app/src-tauri/target/
 
 tauri-dev.pid
 *.pid
+
+# Impeccable review captures (local screenshots)
+.impeccable/review/

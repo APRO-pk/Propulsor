@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Propulsor — Boarding Pass &amp; Gate Board</title>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--ground:#f4f4f2;--ink:#101214;--mid:#5b6168;--line:#d7d8d4;--alert:#ffb000;--fail:#c4261d}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;background:var(--ground);font:13px/1.4 "Hanken Grotesk",sans-serif;color:var(--ink);display:grid;grid-template:1fr 64px/232px 1fr 360px;font-variant-numeric:tabular-nums}
+.mono{font-family:"JetBrains Mono",monospace}
+nav{background:var(--ink);color:#e6e7e3;padding:18px 0}
+nav .brand{font-weight:800;letter-spacing:.12em;font-size:12px;padding:0 20px 16px}
+nav .g{font-size:10.5px;letter-spacing:.14em;color:#8b9096;padding:12px 20px 4px;font-weight:700}
+nav a{display:block;padding:6px 20px;font-size:13.5px}
+nav a.on{background:var(--alert);color:var(--ink);font-weight:700}
+main{padding:20px 28px;overflow:hidden}
+h2{font-size:28px;font-weight:800;letter-spacing:-.01em}
+.sub{color:var(--mid);margin:2px 0 16px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.card{background:#fff;border:1px solid var(--line);padding:14px 16px}
+.card h3{font-size:12px;letter-spacing:.12em;font-weight:700;color:var(--mid);margin-bottom:8px}
+.row{display:grid;grid-template-columns:1fr 110px 44px;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);align-items:center}
+.in{border:1px solid var(--ink);padding:3px 6px;text-align:right;font-family:"JetBrains Mono",monospace}
+.lit{background:var(--alert);font-weight:700}
+.chart{grid-column:1/-1;height:230px}
+aside{background:#fff;border-left:1px solid var(--line);padding:18px 20px}
+aside h3{font-size:12px;letter-spacing:.12em;font-weight:700;color:var(--mid);margin-bottom:10px}
+.board{width:100%;border-collapse:collapse;font-family:"JetBrains Mono",monospace;font-size:12px}
+.board td{padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+.board .st{font-weight:700;width:58px}
+.f{color:#fff;background:var(--fail);padding:1px 5px}.a{background:var(--alert);padding:1px 5px}
+.changed td{background:#fff6dc}
+.res{margin-top:22px}.res p{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line)}
+.res b.lit{padding:0 4px}
+.pass{grid-column:1/-1;display:flex;background:#fff;border-top:2px solid var(--ink)}
+.pass div{padding:8px 18px;border-right:1px dashed #9ba0a6}
+.pass .k{font-size:10px;letter-spacing:.14em;color:var(--mid);font-weight:700}
+.pass .v{font-size:19px;font-weight:800}
+.pass .bar{margin-left:auto;display:flex;align-items:center;gap:2px;border:0}
+.pass .bar i{width:2px;height:34px;background:var(--ink)}.pass .bar i:nth-child(3n){width:4px}
+</style></head><body>
+<nav><div class="brand">PROPULSOR</div>
+  <div class="g">DESIGN</div><a>Requirements</a><a>Summary</a><a>Performance map</a><a>Trades</a>
+  <div class="g">ENGINE</div><a>3D model</a><a>Cross-section</a><a class="on">Cooling</a><a>Injector &amp; stress</a>
+  <div class="g">MACHINERY</div><a>Turbopumps</a><a>Blades</a><a>Feed system</a><a>Control</a>
+  <div class="g">VERIFY</div><a>Validation</a><a>Assembly</a></nav>
+<main><h2>Cooling</h2><div class="sub">Regenerative · CuCrZr · 80 channels — 2 values changed since your last look</div>
+  <div class="grid">
+    <div class="card"><h3>WALL &amp; METHOD</h3>
+      <div class="row"><span>Cooling method</span><span class="in">Regen</span><span></span></div>
+      <div class="row"><span>Wall material</span><span class="in">CuCrZr</span><span></span></div>
+      <div class="row"><span>Max wall temperature</span><span class="in lit">812 K</span><span class="mono">▲34</span></div></div>
+    <div class="card"><h3>COOLANT CHANNELS</h3>
+      <div class="row"><span>Channel count</span><span class="in">80</span><span></span></div>
+      <div class="row"><span>Channel width</span><span class="in">0.80</span><span>mm</span></div>
+      <div class="row"><span>Channel height</span><span class="in">1.50</span><span>mm</span></div></div>
+    <div class="card chart"><h3>WALL TEMPERATURE ALONG AXIS</h3>
+      <svg width="100%" height="180" viewBox="0 0 900 180" preserveAspectRatio="none"><path d="M0 160H900" stroke="#101214"/><path d="M0 40H900" stroke="#c4261d" stroke-dasharray="5 4"/>
+      <path d="M0 120C200 116 330 104 430 60C480 36 510 32 550 54C650 104 780 130 900 138" fill="none" stroke="#101214" stroke-width="2.5"/><circle cx="500" cy="34" r="6" fill="#ffb000" stroke="#101214"/></svg></div>
+  </div></main>
+<aside><h3>DEPARTURES · CHECKS</h3>
+  <table class="board"><tr class="changed"><td class="st"><span class="f">FAIL</span></td><td>STRESS · margin 0.26 &lt; 1.0<br>peak σ 770 MPa</td></tr>
+    <tr><td class="st"><span class="a">ADV</span></td><td>TURBO · shaft supercritical<br>N_cr 2010 rpm</td></tr>
+    <tr><td class="st"><span class="a">ADV</span></td><td>TURBO · bearing bore 45 mm<br>&gt; 12.5 mm shaft</td></tr>
+    <tr><td class="st"><span class="a">ADV</span></td><td>CONTROL · Pc loop 20 Hz<br>&gt; 1/10 of 50 Hz</td></tr></table>
+  <div class="res"><h3>RESULTS</h3><p><span>Throat Ø</span><b class="mono">56.0 mm</b></p><p><span>T_c</span><b class="mono">3599 K</b></p><p><span>Max wall T</span><b class="mono lit">812 K</b></p><p><span>Isp delivered SL</span><b class="mono">271 s</b></p></div></aside>
+<div class="pass"><div><div class="k">DESIGN</div><div class="v">untitled</div></div><div><div class="k">REV</div><div class="v">24</div></div><div><div class="k">PROPELLANT</div><div class="v">LOX → CH₄</div></div><div><div class="k">THRUST</div><div class="v">25.0 kN</div></div><div><div class="k">Pc</div><div class="v">60 bar</div></div><div><div class="k">O/F</div><div class="v">3.40</div></div><div><div class="k">TIERS</div><div class="v">L0–L5</div></div><div class="bar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+</body></html>

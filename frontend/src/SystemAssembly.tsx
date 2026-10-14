@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Html, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
+import { SCENE } from "./theme";
 import { useEngineStore } from "./store";
 import { feedStudy, type FeedStudyDto } from "./api";
 
@@ -60,16 +61,16 @@ export function SystemAssembly() {
   const totalH = oxY + ox.l / 2 + eng.nozzleL + (bottleR > 0 ? 2 * bottleR + gap : 0);
   const cam = totalH * 1.35;
 
-  const OX = "#5aa9e6";
-  const FU = "#e6a15a";
+  const OX = SCENE.ox;
+  const FU = SCENE.fuel;
 
   return (
     <div className="viewer3d">
       <Canvas dpr={[1, 2]} camera={{ position: [cam * 0.9, totalH * 0.35, cam], fov: 40, near: 0.001, far: 100 }}>
-        <color attach="background" args={["#3b4046"]} />
-        <hemisphereLight args={["#ffffff", "#33383e", 1.0]} />
+        <color attach="background" args={[SCENE.background]} />
+        <hemisphereLight args={[SCENE.sky, SCENE.ground, 1.0]} />
         <directionalLight position={[cam, cam, cam]} intensity={2.2} />
-        <directionalLight position={[-cam, cam * 0.4, -cam]} intensity={0.7} color="#a9c0dd" />
+        <directionalLight position={[-cam, cam * 0.4, -cam]} intensity={0.7} color={SCENE.fillCool} />
 
         <AssemblyScene
           eng={eng} ox={ox} fu={fu} OX={OX} FU={FU}
@@ -78,20 +79,22 @@ export function SystemAssembly() {
           bottleR={bottleR} bottleY={bottleY} pumpFed={feed?.feed_type === "pump-fed"}
         />
 
-        <gridHelper args={[cam * 4, 24, "#565b62", "#474c52"]} position={[0, -totalH / 2, 0]} />
+        <gridHelper args={[cam * 4, 24, SCENE.gridMajor, SCENE.gridMinor]} position={[0, -totalH / 2, 0]} />
         <OrbitControls enableDamping dampingFactor={0.08} />
       </Canvas>
 
       <div className="viewer3d-toolbar">
-        <button className={`qt-tool ${exploded ? "on" : ""}`} onClick={() => setExploded((e) => !e)}>Exploded</button>
-        <button className={`qt-tool ${airframe ? "on" : ""}`} onClick={() => setAirframe((a) => !a)}>Airframe</button>
+        <div className="vt-toggles">
+          <button className={`chip ${exploded ? "on" : ""}`} aria-pressed={exploded} onClick={() => setExploded((e) => !e)}>Exploded</button>
+          <button className={`chip ${airframe ? "on" : ""}`} aria-pressed={airframe} onClick={() => setAirframe((a) => !a)}>Airframe</button>
+        </div>
       </div>
       <div className="viewer3d-machbar">
-        <span style={{ color: "#8fc6f0" }}>■ oxidizer</span>
-        <span style={{ color: "#f0c08f" }}>■ fuel</span>
+        <span style={{ color: "var(--ox)" }}>■ oxidizer</span>
+        <span style={{ color: "var(--fuel)" }}>■ fuel</span>
         <span>· feed: {feed?.feed_type}</span>
       </div>
-      <div className="viewer3d-hint">drag to orbit · scroll to zoom · toggle Exploded</div>
+      <div className="viewer3d-hint">Drag to orbit · scroll to zoom</div>
     </div>
   );
 }
@@ -141,7 +144,7 @@ function AssemblyScene(props: SceneProps) {
     g.computeVertexNormals();
     return g;
   }, [eng.contour]);
-  const metal = useMemo(() => new THREE.MeshStandardMaterial({ color: "#cdd2da", metalness: 0.7, roughness: 0.35, side: THREE.DoubleSide }), []);
+  const metal = useMemo(() => new THREE.MeshStandardMaterial({ color: SCENE.metal, metalness: 0.7, roughness: 0.35, side: THREE.DoubleSide }), []);
 
   // Explode offsets (m) along +Y, spreading the stack apart.
   const off = {
@@ -169,9 +172,9 @@ function AssemblyScene(props: SceneProps) {
   });
 
   const labelStyle: React.CSSProperties = {
-    background: "rgba(28,32,38,0.82)", color: "#e8ecf2", padding: "2px 7px", borderRadius: 4,
+    background: "rgba(6,32,57,0.88)", color: "var(--ink)", padding: "2px 7px", borderRadius: 4,
     fontSize: 11, whiteSpace: "nowrap", pointerEvents: "none", transform: "translateX(10px)",
-    border: "1px solid rgba(255,255,255,0.15)",
+    border: "1px solid var(--line-2)",
   };
   const showLabels = exploded;
 
@@ -180,7 +183,7 @@ function AssemblyScene(props: SceneProps) {
       {/* Airframe (always mounted so it can fade; opacity animated) */}
       <mesh position={[0, oxY - eng.nozzleL / 2, 0]} visible={airframe || exploded}>
         <cylinderGeometry args={[bodyR, bodyR, totalH, 48, 1, true]} />
-        <meshStandardMaterial ref={airMat} color="#aeb6c2" metalness={0.4} roughness={0.5} transparent opacity={0.14} side={THREE.DoubleSide} />
+        <meshStandardMaterial ref={airMat} color={SCENE.metalDark} metalness={0.4} roughness={0.5} transparent opacity={0.14} side={THREE.DoubleSide} />
       </mesh>
 
       {/* Pressurant bottle (pressure-fed only) */}
@@ -188,7 +191,7 @@ function AssemblyScene(props: SceneProps) {
         <group ref={bottleRef} position={[0, bottleY, 0]}>
           <mesh>
             <sphereGeometry args={[bottleR, 32, 24]} />
-            <meshStandardMaterial color="#4a9d5a" metalness={0.5} roughness={0.4} />
+            <meshStandardMaterial color={SCENE.injector} metalness={0.5} roughness={0.4} />
           </mesh>
           {showLabels && <Html position={[bottleR, 0, 0]} style={labelStyle}>Pressurant bottle</Html>}
         </group>
@@ -216,7 +219,7 @@ function AssemblyScene(props: SceneProps) {
               </mesh>
               <mesh position={[s * eng.chamberR * 0.62, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
                 <cylinderGeometry args={[eng.chamberR * 0.38, eng.chamberR * 0.38, eng.chamberR * 0.2, 20]} />
-                <meshStandardMaterial color="#9aa2af" metalness={0.8} roughness={0.3} />
+                <meshStandardMaterial color={SCENE.metalDark} metalness={0.8} roughness={0.3} />
               </mesh>
             </group>
           ))}
@@ -228,7 +231,7 @@ function AssemblyScene(props: SceneProps) {
       <group ref={injRef} position={[0, injY, 0]}>
         <mesh rotation={[0, 0, 0]}>
           <cylinderGeometry args={[eng.chamberR * 1.02, eng.chamberR * 1.02, injThk, 40]} />
-          <meshStandardMaterial color="#b7bdc7" metalness={0.75} roughness={0.3} />
+          <meshStandardMaterial color={SCENE.metal} metalness={0.75} roughness={0.3} />
         </mesh>
         {showLabels && <Html position={[eng.chamberR, 0, 0]} style={labelStyle}>Injector plate</Html>}
       </group>

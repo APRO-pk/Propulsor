@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Propulsor — Drawing Sheet</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@400;600;700&family=Archivo:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--sheet:#fff;--line:#111;--zone:#dde5df;--tb:#2f4a42;--red:#c8102e;--dim:#5a625f}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;background:var(--zone);font:13px/1.4 Archivo,sans-serif;color:var(--line);padding:18px 22px;font-variant-numeric:tabular-nums}
+.sheet{position:relative;height:100%;background:var(--sheet);border:2px solid var(--line);display:grid;grid-template:44px 1fr 132px/1fr 420px}
+.zx{position:absolute;top:-16px;left:0;right:0;display:flex;font:600 10px "Archivo Narrow";color:var(--dim)}
+.zx span{flex:1;text-align:center;border-left:1px solid #9aa5a0}
+.zy{position:absolute;left:-16px;top:0;bottom:0;display:flex;flex-direction:column;font:600 10px "Archivo Narrow";color:var(--dim)}
+.zy span{flex:1;display:flex;align-items:center;border-top:1px solid #9aa5a0}
+.index{grid-column:1/-1;display:flex;border-bottom:2px solid var(--line);font:600 13px "Archivo Narrow";letter-spacing:.04em;text-transform:uppercase}
+.index span{padding:0 16px;display:flex;align-items:center;border-right:1px solid var(--line)}
+.index span b{font-weight:700;margin-right:6px;color:var(--dim)}
+.index .on{background:var(--tb);color:#fff}.index .on b{color:#cfe0d8}
+.index .act{margin-left:auto;border-left:1px solid var(--line);border-right:0}
+.field{padding:20px 26px;display:grid;grid-template-columns:1fr 1fr;gap:20px 30px;align-content:start;border-right:1px solid var(--line)}
+h3{font:700 13px "Archivo Narrow";letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--line);padding-bottom:3px;margin-bottom:6px}
+.row{display:grid;grid-template-columns:1fr 110px 40px;gap:8px;padding:4px 0;border-bottom:1px solid #e4e7e5;align-items:center}
+.row label{color:var(--dim)}.in{border:1px solid var(--line);padding:2px 6px;text-align:right}
+.red{color:var(--red)}.cloud{outline:1.5px solid var(--red);outline-offset:3px;border-radius:2px}
+.view{grid-column:1/-1;border:1px solid var(--line);height:250px;position:relative}
+.view .lbl{position:absolute;left:10px;bottom:6px;font:700 12px "Archivo Narrow";letter-spacing:.06em}
+.side{padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+table{width:100%;border-collapse:collapse;font-size:12px}td,th{border:1px solid var(--line);padding:3px 6px;text-align:right}
+th{font:700 11px "Archivo Narrow";text-transform:uppercase;letter-spacing:.05em;background:#f1f4f2}td:first-child,th:first-child{text-align:left}
+.tb{grid-column:1/-1;border-top:2px solid var(--line);display:grid;grid-template-columns:1fr 1fr 260px 200px 200px 160px}
+.tb div{border-right:1px solid var(--line);padding:6px 10px}
+.tb .k{font:700 10px "Archivo Narrow";letter-spacing:.08em;color:var(--dim);text-transform:uppercase}
+.tb .v{font-size:15px;font-weight:700;margin-top:2px}
+.tb .big{font-size:24px}
+.tb .title{background:var(--tb);color:#fff}.tb .title .k{color:#cfe0d8}
+.fail{background:var(--red);color:#fff;font-weight:700;padding:1px 6px}
+</style></head><body>
+<div class="sheet">
+  <div class="zx"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div>
+  <div class="zy"><span>A</span><span>B</span><span>C</span><span>D</span><span>E</span></div>
+  <div class="index"><span><b>01</b>Requirements</span><span><b>02</b>Performance</span><span><b>03</b>Geometry</span><span class="on"><b>04</b>Cooling</span><span><b>05</b>Stress</span><span><b>06</b>Turbomachinery</span><span><b>07</b>Feed &amp; control</span><span><b>08</b>Validation</span><span class="act">Solve · Undo · SI · Export</span></div>
+  <div class="field">
+    <div><h3>Wall &amp; method</h3>
+      <div class="row"><label>Cooling method</label><span class="in" style="text-align:left">Regenerative</span><span></span></div>
+      <div class="row"><label>Wall material</label><span class="in" style="text-align:left">CuCrZr</span><span></span></div>
+      <div class="row"><label>Max wall temperature</label><b style="text-align:right">812 K</b><span>/900</span></div></div>
+    <div><h3>Coolant channels</h3>
+      <div class="row"><label>Channel count</label><span class="in cloud red">80</span><span class="red">△2</span></div>
+      <div class="row"><label>Channel width</label><span class="in">0.80</span><span>mm</span></div>
+      <div class="row"><label>Channel height</label><span class="in cloud red">1.50</span><span class="red">△2</span></div></div>
+    <div class="view"><svg width="100%" height="100%" viewBox="0 0 860 250"><path d="M40 125H830" stroke="#111" stroke-dasharray="14 4 3 4"/>
+      <path d="M60 60H330C380 60 400 108 440 108C480 108 560 80 820 30M60 190H330C380 190 400 142 440 142C480 142 560 170 820 220" fill="none" stroke="#111" stroke-width="2"/>
+      <path d="M60 60V190" stroke="#111" stroke-width="2"/><path d="M440 100V150" stroke="#c8102e"/><text x="448" y="96" font-size="12" fill="#c8102e">Ø56.0 THROAT</text></svg>
+      <span class="lbl">SECTION A–A · WALL TEMPERATURE · SCALE 1:2</span></div>
+  </div>
+  <div class="side">
+    <div><h3>Revision block</h3><table><tr><th>Rev</th><th>Change</th><th>Zone</th></tr>
+      <tr class="red"><td>24</td><td style="text-align:left">Channel height 1.2 → 1.5 mm</td><td>B4</td></tr>
+      <tr class="red"><td>23</td><td style="text-align:left">Channel count 60 → 80</td><td>B4</td></tr>
+      <tr><td>22</td><td style="text-align:left">Wall material → CuCrZr</td><td>B2</td></tr></table></div>
+    <div><h3>Checks</h3><table><tr><td><span class="fail">FAIL</span></td><td style="text-align:left">Structural margin 0.26 &lt; 1.0</td><td>D5</td></tr>
+      <tr><td>ADV</td><td style="text-align:left">Shaft supercritical</td><td>C6</td></tr><tr><td>ADV</td><td style="text-align:left">Pc loop vs sample rate</td><td>E7</td></tr></table></div>
+    <div><h3>Results</h3><table><tr><td>Throat Ø</td><td>56.0 mm</td></tr><tr><td>T_c</td><td>3599 K</td></tr><tr><td>c*</td><td>1827 m/s</td></tr><tr><td>Isp delivered SL</td><td>271 s</td></tr></table></div>
+  </div>
+  <div class="tb">
+    <div class="title"><div class="k">Title</div><div class="v big">LOX/CH₄ THRUST CHAMBER · 25 kN</div></div>
+    <div><div class="k">Propellant / O·F</div><div class="v">LOX / Methane · 3.40</div><div class="k" style="margin-top:6px">Chamber pressure</div><div class="v">60.0 bar</div></div>
+    <div><div class="k">Tiers</div><div class="v">L0–L5 solved</div><div class="k" style="margin-top:6px">Checks</div><div class="v"><span class="fail">1 FAIL</span> 3 ADV</div></div>
+    <div><div class="k">Drawing no.</div><div class="v">untitled</div></div><div><div class="k">Rev</div><div class="v big">24</div></div><div><div class="k">Units</div><div class="v">SI</div></div>
+  </div>
+</div>
+</body></html>

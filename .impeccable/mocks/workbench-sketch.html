@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Propulsor — workbench sketch</title>
+<link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --app:#121417; --panel:#181a1e; --panel-2:#1e2126; --raised:#24282e; --field:#0f1114;
+  --line:#2a2e35; --line-2:#3b4048;
+  --ink:#e9ebee; --ink-2:#b8bdc5; --ink-3:#8c929b;
+  --accent:#78a9e6; --accent-soft:rgba(120,169,230,.14);
+  --ok:#5fbf8b; --warn:#d9b45a; --fail:#e5636a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;background:var(--app);color:var(--ink);font:13px/1.4 "Sofia Sans",system-ui,sans-serif;font-variant-numeric:tabular-nums;
+  display:grid;grid-template:44px 1fr 196px 26px/252px 1fr 336px;grid-template-areas:"top top top" "tree stage insp" "tree drawer insp" "status status status"}
+svg{display:block}
+.ico{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4}
+
+/* top bar */
+.top{grid-area:top;display:flex;align-items:center;gap:16px;padding:0 12px 0 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14px;letter-spacing:.02em}
+.ident{display:flex;align-items:baseline;gap:12px;padding-left:16px;border-left:1px solid var(--line);height:22px}
+.ident b{font-weight:600}
+.ident .rev{color:var(--ink-3);font-size:12px}
+.spec{color:var(--ink-2)}
+.spec em{font-style:normal;color:var(--ink);font-weight:600}
+.spec i{font-style:normal;color:var(--line-2);margin:0 8px}
+.acts{margin-left:auto;display:flex;align-items:center;gap:2px}
+.btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 9px;border-radius:5px;color:var(--ink-2);font-size:12.5px}
+.btn.solve{background:var(--accent);color:#0c1420;font-weight:700;padding:0 13px;margin-left:6px}
+.vsep{width:1px;height:18px;background:var(--line);margin:0 6px}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:5px;overflow:hidden;font-size:12px}
+.seg span{padding:3px 8px;color:var(--ink-3)}.seg .on{background:var(--raised);color:var(--ink)}
+
+/* feature tree */
+.tree{grid-area:tree;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column}
+.ph{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 8px;font-size:11.5px;font-weight:600;color:var(--ink-3);letter-spacing:.04em}
+.filter{margin:0 12px 8px;height:28px;border:1px solid var(--line);border-radius:5px;background:var(--field);color:var(--ink-3);display:flex;align-items:center;gap:7px;padding:0 9px;font-size:12.5px}
+.node{display:flex;align-items:center;gap:7px;height:27px;padding-right:12px;color:var(--ink-2);font-size:13px;position:relative}
+.node .car{width:12px;color:var(--ink-3);font-size:9px;text-align:center}
+.node .st{margin-left:auto;width:7px;height:7px;border-radius:50%}
+.st.ok{background:var(--ok)} .st.warn{background:var(--warn)} .st.fail{background:var(--fail)} .st.none{border:1px solid var(--line-2)}
+.node.sel{background:var(--accent-soft);color:var(--ink);font-weight:600}
+.node.sel::before{content:"";position:absolute;left:0;top:4px;bottom:4px;width:2px;background:var(--accent);border-radius:0 2px 2px 0}
+.node.grp{color:var(--ink);font-weight:600}
+.tree .foot{margin-top:auto;border-top:1px solid var(--line);padding:10px 14px;color:var(--ink-3);font-size:12px;line-height:1.5}
+.tree .foot b{color:var(--ink-2);font-weight:600}
+
+/* stage */
+.stage{grid-area:stage;position:relative;overflow:hidden;background:radial-gradient(120% 90% at 50% 45%,#1b1e23 0%,#111316 55%,#0b0c0e 100%)}
+.ov{position:absolute;display:flex;gap:6px;align-items:center}
+.chip{height:28px;display:inline-flex;align-items:center;gap:6px;padding:0 10px;border-radius:5px;background:rgba(24,26,30,.86);border:1px solid var(--line);color:var(--ink-2);font-size:12.5px;backdrop-filter:blur(6px)}
+.chip.on{color:var(--ink);border-color:var(--line-2);background:rgba(36,40,46,.92)}
+.modes{display:inline-flex;border:1px solid var(--line);border-radius:5px;background:rgba(24,26,30,.86);overflow:hidden}
+.modes span{padding:5px 11px;font-size:12.5px;color:var(--ink-3);border-right:1px solid var(--line)}
+.modes span:last-child{border:0}.modes .on{color:var(--ink);background:var(--raised)}
+.inset{position:absolute;right:14px;top:14px;width:250px;background:rgba(20,22,26,.9);border:1px solid var(--line);border-radius:6px;padding:9px 10px 8px;backdrop-filter:blur(6px)}
+.inset .t{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-3);margin-bottom:4px}
+.callout{position:absolute;font-size:12px;color:var(--ink-2)}
+.callout b{color:var(--ink);font-weight:600}
+.hint{position:absolute;right:16px;bottom:12px;font-size:11.5px;color:var(--ink-3)}
+.legend{position:absolute;left:16px;bottom:14px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-3)}
+.legend .bar{width:120px;height:6px;border-radius:3px;background:linear-gradient(90deg,#6b1a0c,#c2410c,#ff7a2e,#ffd08a,#fff3e2)}
+
+/* drawer */
+.drawer{grid-area:drawer;background:var(--panel);border-top:1px solid var(--line);display:flex;flex-direction:column}
+.dtabs{display:flex;align-items:center;gap:2px;padding:0 10px;height:34px;border-bottom:1px solid var(--line)}
+.dtabs span{padding:7px 10px;color:var(--ink-3);font-size:12.5px;border-bottom:2px solid transparent}
+.dtabs .on{color:var(--ink);border-color:var(--accent)}
+.dtabs .r{margin-left:auto;color:var(--ink-3);font-size:12px}
+.chart{flex:1;padding:8px 14px 10px}
+
+/* inspector */
+.insp{grid-area:insp;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column}
+.ih{padding:12px 16px 0}
+.crumb{font-size:12px;color:var(--ink-3)}
+.ih h1{font-size:18px;font-weight:700;margin:2px 0 10px;letter-spacing:-.005em}
+.itabs{display:flex;gap:18px;border-bottom:1px solid var(--line);padding:0 16px}
+.itabs span{padding:6px 0 8px;color:var(--ink-3);font-size:13px;border-bottom:2px solid transparent}
+.itabs .on{color:var(--ink);border-color:var(--accent)}
+.sec{padding:12px 16px 4px}
+.sec h2{font-size:11.5px;font-weight:600;color:var(--ink-3);letter-spacing:.04em;margin-bottom:6px;display:flex;justify-content:space-between}
+.sec h2 a{color:var(--accent);font-weight:500;letter-spacing:0}
+.row{display:grid;grid-template-columns:1fr 104px 46px;gap:8px;align-items:center;min-height:30px}
+.row label{color:var(--ink-2)}
+.in{height:26px;border:1px solid var(--line-2);border-radius:4px;background:var(--field);display:flex;align-items:center;justify-content:flex-end;padding:0 8px;color:var(--ink)}
+.in.sel{justify-content:space-between}
+.u{color:var(--ink-3);font-size:12px}
+.mark{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent);margin-left:6px;vertical-align:middle}
+.kv{display:flex;justify-content:space-between;align-items:baseline;min-height:28px;border-bottom:1px solid var(--line)}
+.kv span{color:var(--ink-2)} .kv b{font-weight:600}
+.kv .ok{color:var(--ok)}
+.big{display:flex;gap:18px;padding:4px 0 6px}
+.big div{flex:1}
+.big .n{font-size:24px;font-weight:600;letter-spacing:-.01em}
+.big .n small{font-size:13px;color:var(--ink-3);font-weight:500;margin-left:2px}
+.big .k{font-size:12px;color:var(--ink-3)}
+
+/* status */
+.status{grid-area:status;display:flex;align-items:center;gap:16px;padding:0 14px;background:var(--panel);border-top:1px solid var(--line);font-size:12px;color:var(--ink-3)}
+.status .f{color:var(--fail)}
+.status .r{margin-left:auto}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <svg width="20" height="20" viewBox="0 0 20 20"><path d="M2 5.5h4c1.4 0 2 2.6 3.4 2.6S11 7.6 12 7M2 14.5h4c1.4 0 2-2.6 3.4-2.6S11 12.4 12 13M2 5.5v9" fill="none" stroke="#e9ebee" stroke-width="1.5"/><path d="M12.6 8.4L18.5 6.5v7l-5.9-1.9z" fill="#ff7a2e" opacity=".9"/></svg>
+    Propulsor
+  </div>
+  <div class="ident"><b>Untitled design</b><span class="rev">Rev 16</span>
+    <span class="spec">LOX / CH₄<i>|</i>F <em>25.0 kN</em><i>|</i>Pc <em>60 bar</em><i>|</i>O/F <em>3.40</em></span></div>
+  <div class="acts">
+    <span class="btn"><svg class="ico" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"/><path d="M8 7v5M5.5 9.5h5"/></svg>New</span>
+    <span class="btn"><svg class="ico" viewBox="0 0 16 16"><path d="M1.5 3.5h4l1.2 1.4h7.8v8.6h-13z"/></svg>Open</span>
+    <span class="btn"><svg class="ico" viewBox="0 0 16 16"><path d="M2.5 2.5h9l2 2v9h-11z"/><path d="M5 2.5v3h5v-3M5 13.5v-4h6v4"/></svg>Save</span>
+    <span class="vsep"></span>
+    <span class="btn"><svg class="ico" viewBox="0 0 16 16"><path d="M5.5 3.5L2.5 6.5l3 3"/><path d="M2.8 6.5h7a3.5 3.5 0 010 7H7"/></svg></span>
+    <span class="btn"><svg class="ico" viewBox="0 0 16 16"><path d="M10.5 3.5l3 3-3 3"/><path d="M13.2 6.5h-7a3.5 3.5 0 000 7H9"/></svg></span>
+    <span class="btn solve"><svg class="ico" viewBox="0 0 16 16" style="stroke:#0c1420"><path d="M2.5 8a5.5 5.5 0 019.6-3.7M13.5 8a5.5 5.5 0 01-9.6 3.7"/><path d="M12.4 1.8v2.7H9.7M3.6 14.2v-2.7h2.7"/></svg>Solve</span>
+    <span class="vsep"></span>
+    <span class="seg"><span class="on">SI</span><span>Imperial</span></span>
+    <span class="btn"><svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M6.3 6.3a1.8 1.8 0 113.3 1c-.7.5-1.6.8-1.6 1.9M8 11.4v.4"/></svg></span>
+  </div>
+</header>
+
+<nav class="tree">
+  <div class="ph">ENGINE <span style="font-weight:500">Ctrl K</span></div>
+  <div class="filter"><svg class="ico" viewBox="0 0 16 16" style="width:14px"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5l3 3"/></svg>Find a part or parameter</div>
+  <div class="node" style="padding-left:12px"><span class="car"></span>Requirements<span class="st ok"></span></div>
+  <div class="node" style="padding-left:12px"><span class="car"></span>Combustion<span class="st ok"></span></div>
+  <div class="node grp" style="padding-left:12px"><span class="car">▼</span>Thrust chamber</div>
+  <div class="node" style="padding-left:32px"><span class="car"></span>Chamber<span class="st ok"></span></div>
+  <div class="node" style="padding-left:32px"><span class="car"></span>Nozzle<span class="st ok"></span></div>
+  <div class="node sel" style="padding-left:32px"><span class="car"></span>Cooling jacket<span class="st ok"></span></div>
+  <div class="node" style="padding-left:32px"><span class="car"></span>Injector<span class="st fail"></span></div>
+  <div class="node grp" style="padding-left:12px"><span class="car">▼</span>Turbomachinery</div>
+  <div class="node" style="padding-left:32px"><span class="car"></span>Turbopump<span class="st warn"></span></div>
+  <div class="node" style="padding-left:32px"><span class="car"></span>Blades<span class="st ok"></span></div>
+  <div class="node" style="padding-left:12px"><span class="car">▶</span>Feed system<span class="st ok"></span></div>
+  <div class="node" style="padding-left:12px"><span class="car"></span>Control<span class="st warn"></span></div>
+  <div class="node" style="padding-left:12px"><span class="car"></span>Vehicle<span class="st none"></span></div>
+  <div class="node grp" style="padding-left:12px"><span class="car">▼</span>Studies</div>
+  <div class="node" style="padding-left:32px"><span class="car"></span>Summary</div>
+  <div class="node" style="padding-left:32px"><span class="car"></span>Trade studies</div>
+  <div class="node" style="padding-left:32px"><span class="car"></span>Validation<span class="st none"></span></div>
+  <div class="foot"><b>Regenerative</b> · CuCrZr · 80 channels<br>Coolant: fuel (LCH₄), 120 bar</div>
+</nav>
+
+<main class="stage">
+  <svg width="852" height="634" viewBox="0 0 852 634">
+    <defs>
+      <linearGradient id="gas" x1="230" x2="640" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#fff6ea"/><stop offset=".45" stop-color="#ffe0ad"/><stop offset=".66" stop-color="#ff8a3d"/><stop offset=".84" stop-color="#c2410c"/><stop offset="1" stop-color="#6e1a0b"/>
+      </linearGradient>
+      <linearGradient id="curv" x1="0" y1="226" x2="0" y2="374" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset=".3" stop-color="#000" stop-opacity="0"/><stop offset=".7" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".5"/>
+      </linearGradient>
+      <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#dfe3e8"/><stop offset=".5" stop-color="#a9b0ba"/><stop offset="1" stop-color="#7b838e"/>
+      </linearGradient>
+      <radialGradient id="plume" cx="0" cy=".5" r="1">
+        <stop offset="0" stop-color="#fff1dc" stop-opacity=".95"/><stop offset=".3" stop-color="#ff9a4a" stop-opacity=".55"/><stop offset=".7" stop-color="#ff6a1f" stop-opacity=".16"/><stop offset="1" stop-color="#ff6a1f" stop-opacity="0"/>
+      </radialGradient>
+      <filter id="soft" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="6"/></filter>
+      <radialGradient id="shadow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#000" stop-opacity=".55"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+    </defs>
+
+    <!-- floor -->
+    <g stroke="#1b1e23" stroke-width="1">
+      <path d="M0 470H852M60 512H792M-40 560H892M-120 618H972"/>
+      <path d="M426 470L426 634M330 470L250 634M522 470L602 634M234 470L74 634M618 470L778 634M138 470L-102 634M714 470L954 634"/>
+    </g>
+    <ellipse cx="440" cy="470" rx="300" ry="26" fill="url(#shadow)"/>
+
+    <!-- plume -->
+    <g filter="url(#soft)">
+      <path d="M640 226C700 222 760 262 840 290V310C760 338 700 378 640 374Z" fill="url(#plume)"/>
+      <path d="M640 262C680 268 720 286 770 300C720 314 680 332 640 338Z" fill="#fff4e4" opacity=".55"/>
+    </g>
+
+    <!-- hot gas (inner back surface of the half section) -->
+    <path d="M230 228H450C480 228 495 264 520 264C560 264 600 240 640 226V374C600 360 560 336 520 336C495 336 480 372 450 372H230Z" fill="url(#gas)"/>
+    <path d="M230 228H450C480 228 495 264 520 264C560 264 600 240 640 226V374C600 360 560 336 520 336C495 336 480 372 450 372H230Z" fill="url(#curv)"/>
+
+    <!-- wall cut faces; the selected cooling jacket band is outlined in the accent -->
+    <path d="M230 216H450C482 216 497 252 520 252C562 252 602 228 640 214V226C600 240 560 264 520 264C495 264 480 228 450 228H230Z" fill="url(#metal)"/>
+    <path d="M230 384H450C482 384 497 348 520 348C562 348 602 372 640 386V374C600 360 560 336 520 336C495 336 480 372 450 372H230Z" fill="url(#metal)"/>
+    <g fill="#2a3f5c" opacity=".9">
+      <rect x="244" y="219" width="196" height="4" rx="1"/><rect x="244" y="377" width="196" height="4" rx="1"/>
+    </g>
+    <path d="M230 214H450C482 214 497 250 520 250C562 250 602 226 640 212M230 386H450C482 386 497 350 520 350C562 350 602 374 640 388" fill="none" stroke="#78a9e6" stroke-width="1.6"/>
+    <!-- injector plate -->
+    <rect x="220" y="214" width="10" height="172" fill="url(#metal)"/>
+    <path d="M196 260h24M196 340h24" stroke="#5a616b" stroke-width="3"/>
+    <!-- exit lip -->
+    <ellipse cx="640" cy="300" rx="10" ry="87" fill="none" stroke="#c9ced6" stroke-width="2"/>
+    <!-- axis -->
+    <path d="M150 300H860" stroke="#5a616b" stroke-width=".8" stroke-dasharray="14 4 3 4"/>
+
+    <!-- dimension callouts -->
+    <g stroke="#8c929b" stroke-width=".8" fill="none">
+      <path d="M520 264V336"/><path d="M520 250V150H470"/>
+      <path d="M640 388V432H690"/>
+    </g>
+  </svg>
+
+  <div class="callout" style="left:354px;top:140px">Throat <b>Ø56.0 mm</b></div>
+  <div class="callout" style="left:696px;top:423px">Exit <b>Ø112.0 mm</b> · ε 4.00</div>
+  <div class="callout" style="left:232px;top:196px;color:var(--accent)">Cooling jacket · 80 channels</div>
+
+  <div class="ov" style="left:14px;top:14px">
+    <span class="modes"><span>Shaded</span><span class="on">Hot gas</span><span>Stress</span><span>Flow</span><span>Channels</span></span>
+    <span class="chip on">Half section</span>
+    <span class="chip">Plume</span>
+  </div>
+
+  <div class="inset">
+    <div class="t"><span>Section A–A</span><span>1:2</span></div>
+    <svg width="230" height="92" viewBox="0 0 230 92">
+      <path d="M6 46H226" stroke="#5a616b" stroke-width=".7" stroke-dasharray="8 3 2 3"/>
+      <path d="M14 16H104C118 16 124 32 134 32C152 32 170 22 196 14M14 76H104C118 76 124 60 134 60C152 60 170 70 196 78M14 16V76" fill="none" stroke="#c4c9d1" stroke-width="1.1"/>
+      <path d="M14 12H104C119 12 125 28 134 28C152 28 170 18 196 10M14 80H104C119 80 125 64 134 64C152 64 170 74 196 82" fill="none" stroke="#78a9e6" stroke-width="1.1"/>
+      <g stroke="#8c929b" stroke-width=".6"><path d="M134 34V58M196 18V74M14 86H104"/></g>
+      <g fill="#b8bdc5" font-size="9" font-family="Sofia Sans"><text x="138" y="50">Ø56.0</text><text x="200" y="50">Ø112</text><text x="46" y="91">200 mm</text></g>
+    </svg>
+  </div>
+
+  <div class="legend">Gas temperature T/Tc<span class="bar"></span>0.42 – 1.00</div>
+  <div class="hint">Drag to orbit · scroll to zoom · F to frame</div>
+</main>
+
+<section class="drawer">
+  <div class="dtabs"><span class="on">Wall temperature</span><span>Heat flux</span><span>Coolant Δp</span><span>Station table</span><span class="r">Cooling jacket results</span></div>
+  <div class="chart">
+    <svg width="820" height="140" viewBox="0 0 820 140">
+      <g stroke="#262a30"><path d="M44 20H812M44 56H812M44 92H812"/></g>
+      <path d="M44 128H812" stroke="#3b4048"/>
+      <path d="M44 34H812" stroke="#e5636a" stroke-width="1" stroke-dasharray="5 4"/>
+      <path d="M44 112C190 108 300 98 380 66C420 48 444 42 470 50C560 84 700 102 812 106" fill="none" stroke="#78a9e6" stroke-width="2"/>
+      <circle cx="452" cy="44" r="3.5" fill="#78a9e6"/>
+      <g fill="#8c929b" font-size="11" font-family="Sofia Sans"><text x="4" y="38">900 K</text><text x="4" y="96">600</text><text x="4" y="131">450</text><text x="380" y="140">throat</text><text x="700" y="30" fill="#e5636a">CuCrZr limit 900 K</text><text x="462" y="40" fill="#e9ebee">812 K peak</text></g>
+    </svg>
+  </div>
+</section>
+
+<aside class="insp">
+  <div class="ih"><div class="crumb">Thrust chamber ›</div><h1>Cooling jacket</h1></div>
+  <div class="itabs"><span class="on">Inputs</span><span>Results</span></div>
+  <div class="sec">
+    <h2>STRATEGY</h2>
+    <div class="row"><label>Method</label><span class="in sel">Regenerative <span class="u">▾</span></span><span></span></div>
+    <div class="row"><label>Wall material</label><span class="in sel">CuCrZr <span class="u">▾</span></span><span></span></div>
+    <div class="row"><label>Coolant</label><span class="in sel">Fuel (LCH₄) <span class="u">▾</span></span><span></span></div>
+  </div>
+  <div class="sec">
+    <h2>CHANNELS <a>Reset</a></h2>
+    <div class="row"><label>Count<span class="mark"></span></label><span class="in">80</span><span></span></div>
+    <div class="row"><label>Width<span class="mark"></span></label><span class="in">0.80</span><span class="u">mm</span></div>
+    <div class="row"><label>Height<span class="mark"></span></label><span class="in">1.50</span><span class="u">mm</span></div>
+    <div class="row"><label>Jacket pressure</label><span class="in">2.00</span><span class="u">× Pc</span></div>
+  </div>
+  <div class="sec">
+    <h2>OUTCOME</h2>
+    <div class="big"><div><div class="n">812<small>K</small></div><div class="k">Peak wall, limit 900 K</div></div><div><div class="n">35.9<small>bar</small></div><div class="k">Coolant Δp, budget 48</div></div></div>
+    <div class="kv"><span>Thermal margin</span><b class="ok">88 K</b></div>
+    <div class="kv"><span>Peak heat flux</span><b>31.4 MW/m²</b></div>
+  </div>
+</aside>
+
+<footer class="status">
+  <span>L0–L5 solved · re-solved 0.4 s ago</span>
+  <span class="f">1 failed check — Injector: structural margin 0.83 &lt; 1.0</span>
+  <span class="r">Rust solver · SI</span>
+</footer>
+</body>
+</html>

@@ -14,7 +14,7 @@ function UnitSelect({ dim, k, def }: { dim: Dim; k: string; def: string }) {
     <select
       value={sel}
       title="display/entry unit for this field"
-      style={{ padding: "1px 2px", minWidth: 0 }}
+      className="unit-select"
       onChange={(e) => void apply(unitKeyFor(k), e.target.value)}
     >
       {DIMS[dim].units.map((u) => (
@@ -72,12 +72,23 @@ export function ParamField({ label, k, def, step = 1, unit, hint, min, max, dim,
   };
 
   const isCustom = stored !== undefined && stored !== def;
+  const labelText = `${label}${!dim && unit ? ` (${unit})` : ""}`;
+  // The custom mark rides with the label's last word, so it never wraps onto a line of its own.
+  const cut = labelText.lastIndexOf(" ");
   return (
     <label className="qt-field" title={hint}>
       <span>
-        {label}
-        {!dim && unit ? ` (${unit})` : ""}
-        {isCustom ? <span style={{ color: "#3574e0", marginLeft: 4 }} title="custom value (default shown on reset)">●</span> : null}
+        {isCustom ? (
+          <>
+            {labelText.slice(0, cut + 1)}
+            <span className="nowrap">
+              {labelText.slice(cut + 1)}
+              <span className="custom-mark" role="img" aria-label="custom value" title="custom value (default shown on reset)" />
+            </span>
+          </>
+        ) : (
+          labelText
+        )}
       </span>
       <span style={{ display: "inline-flex", gap: 4, alignItems: "flex-start" }}>
         <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
@@ -86,12 +97,12 @@ export function ParamField({ label, k, def, step = 1, unit, hint, min, max, dim,
             step={step}
             value={text}
             title={hint}
-            style={err ? { borderColor: "#c23b34" } : undefined}
+            style={err ? { borderColor: "var(--fail)" } : undefined}
             onChange={(e) => setText(e.target.value)}
             onBlur={commit}
             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
           />
-          {err && <span style={{ color: "#c23b34", fontSize: 10 }}>{err}</span>}
+          {err && <span style={{ color: "var(--fail)", fontSize: 11 }}>{err}</span>}
         </span>
         {dim && <UnitSelect dim={dim} k={k} def={baseUnit ?? DIMS[dim].base} />}
       </span>
@@ -171,17 +182,17 @@ export function UnitNumberField({
           step={step}
           placeholder={placeholder}
           value={text}
-          style={err ? { borderColor: "#c23b34" } : undefined}
+          style={err ? { borderColor: "var(--fail)" } : undefined}
           onChange={(e) => setText(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
         />
-        {err && <span style={{ color: "#c23b34", fontSize: 10 }}>{err}</span>}
+        {err && <span style={{ color: "var(--fail)", fontSize: 11 }}>{err}</span>}
       </span>
       <select
         value={selLabel}
         title="display/entry unit for this field"
-        style={{ padding: "1px 2px", minWidth: 0 }}
+        className="unit-select"
         onChange={(e) => void apply(unitKeyFor(unitKey), e.target.value)}
       >
         {DIMS[dim].units.map((uu) => (
@@ -261,14 +272,14 @@ export function CommitNumberField({
         placeholder={placeholder}
         value={text}
         title={hint}
-        style={err ? { borderColor: "#c23b34" } : undefined}
+        style={err ? { borderColor: "var(--fail)" } : undefined}
         onChange={(e) => setText(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
       />
-      {err && <span style={{ color: "#c23b34", fontSize: 10 }}>{err}</span>}
+      {err && <span style={{ color: "var(--fail)", fontSize: 11 }}>{err}</span>}
     </span>
   );
 }

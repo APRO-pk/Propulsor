@@ -42,7 +42,7 @@ export function Turbopumps() {
 
       <fieldset className="qt-groupbox">
         <legend>Design inputs<span style={{ float: "right" }}><ResetParams prefix="turbo." /></span></legend>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0 16px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: "0 16px" }}>
           <ParamField label="Pump efficiency" k="turbo.pump_efficiency" def={0.7} step={0.01} />
           <ParamField label="Suction spec. speed Nss" k="turbo.suction_specific_speed" def={500} step={50} hint="cavitation/inducer suction performance" />
           <ParamField label="Inducer hub ratio" k="turbo.inducer_hub_ratio" def={0.4} step={0.02} />
@@ -62,7 +62,7 @@ export function Turbopumps() {
         </div>
       </fieldset>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 12 }}>
         <fieldset className="qt-groupbox">
           <legend>Pump</legend>
           <table className="qt-proptable">
